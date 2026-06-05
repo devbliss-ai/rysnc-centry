@@ -1,0 +1,1434 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <title>Rsync 同步中心</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --primary-light: #eff6ff;
+            --success: #10b981;
+            --success-hover: #059669;
+            --danger: #ef4444;
+            --danger-hover: #dc2626;
+            --warning: #f59e0b;
+            --warning-hover: #d97706;
+            --bg: #f1f5f9;
+            --card: #ffffff;
+            --text: #1e293b;
+            --text-secondary: #64748b;
+            --text-muted: #94a3b8;
+            --border: #e2e8f0;
+            --border-focus: #93c5fd;
+            --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+            --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px rgba(0,0,0,0.04);
+            --radius: 10px;
+            --radius-sm: 6px;
+            --radius-lg: 14px;
+            --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+        }
+        /* 深色模式 */
+        [data-theme="dark"] {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --text: #e2e8f0;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border: #334155;
+            --border-focus: #60a5fa;
+            --primary-light: #1e3a8a;
+            --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
+            --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.3);
+            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.6), 0 4px 6px rgba(0,0,0,0.4);
+        }
+        @media (prefers-color-scheme: dark) {
+            [data-theme="auto"] {
+                --bg: #0f172a;
+                --card: #1e293b;
+                --text: #e2e8f0;
+                --text-secondary: #94a3b8;
+                --text-muted: #64748b;
+                --border: #334155;
+                --border-focus: #60a5fa;
+                --primary-light: #1e3a8a;
+            }
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.6; min-height: 100vh; transition: background 0.3s, color 0.3s; }
+        .app-header {
+            background: linear-gradient(135deg, var(--primary), #6366f1);
+            color: white; padding: 24px 0; text-align: center;
+            box-shadow: 0 4px 12px rgba(59,130,246,0.3);
+            position: relative;
+        }
+        .app-header h1 { font-size: 1.6em; font-weight: 700; letter-spacing: 0.5px; }
+        .app-header p { font-size: 0.85em; opacity: 0.85; margin-top: 4px; }
+        .app-version { font-size: 0.7em; opacity: 0.6; margin-top: 2px; }
+        .theme-toggle {
+            position: absolute; top: 16px; right: 16px;
+            background: rgba(255,255,255,0.2); color: white; border: none;
+            border-radius: 50%; width: 36px; height: 36px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.2s;
+        }
+        .theme-toggle:hover { background: rgba(255,255,255,0.35); }
+        .theme-toggle svg { width: 18px; height: 18px; }
+        .main { max-width: 900px; margin: 0 auto; padding: 24px 16px 60px; }
+        .card {
+            background: var(--card); border-radius: var(--radius-lg);
+            box-shadow: var(--shadow); padding: 24px; margin-bottom: 20px;
+            border: 1px solid var(--border);
+        }
+        .card-title {
+            font-size: 1.05em; font-weight: 600; margin-bottom: 18px;
+            display: flex; align-items: center; gap: 8px; color: var(--text);
+        }
+        .card-title svg { width: 20px; height: 20px; flex-shrink: 0; }
+        .form-group { margin-bottom: 16px; }
+        .form-label { display: block; font-size: 0.85em; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+        input[type="text"], input[type="password"], input[type="time"], input[type="number"], select, textarea {
+            width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+            font-size: 0.9em; font-family: var(--font); color: var(--text); background: var(--card);
+            transition: border-color 0.2s, box-shadow 0.2s; outline: none;
+        }
+        input:focus, select:focus, textarea:focus {
+            border-color: var(--border-focus); box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+        }
+        textarea { resize: vertical; min-height: 56px; }
+        select {
+            appearance: none; cursor: pointer;
+            background: var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M6 8L1 3h10z'/%3E%3C/svg%3E") no-repeat right 10px center;
+            padding-right: 28px;
+        }
+        .input-row { display: flex; gap: 10px; align-items: center; }
+        .input-row input { flex: 1; }
+        .input-row-2 { display: flex; gap: 10px; }
+        .input-row-2 > * { flex: 1; }
+        .mode-toggle { display: flex; gap: 0; margin-bottom: 8px; border-radius: var(--radius-sm); overflow: hidden; border: 1.5px solid var(--border); width: fit-content; }
+        .mode-toggle button {
+            padding: 6px 18px; border: none; background: var(--card); color: var(--text-secondary);
+            cursor: pointer; font-size: 0.82em; font-weight: 500; font-family: var(--font);
+            transition: all 0.2s; margin: 0;
+        }
+        .mode-toggle button.active { background: var(--primary); color: white; }
+        .mode-toggle button:hover:not(.active) { background: var(--bg); }
+        .remote-fields { display: none; margin-bottom: 10px; padding: 14px; background: var(--primary-light); border-radius: var(--radius-sm); border: 1px solid #bfdbfe; }
+        .remote-fields.active { display: block; }
+        .remote-fields input { margin-bottom: 8px; background: white; }
+        [data-theme="dark"] .remote-fields input,
+        [data-theme="auto"] .remote-fields input { background: var(--card); }
+        .remote-info { color: var(--text-muted); font-size: 0.78em; margin-top: 2px; }
+        .auth-toggle { display: flex; gap: 0; margin-bottom: 8px; border-radius: var(--radius-sm); overflow: hidden; border: 1.5px solid var(--border); width: fit-content; }
+        .auth-toggle button { padding: 5px 14px; border: none; background: var(--card); color: var(--text-secondary); cursor: pointer; font-size: 0.8em; font-weight: 500; font-family: var(--font); transition: all 0.2s; margin: 0; }
+        .auth-toggle button.active { background: var(--success); color: white; }
+        .auth-toggle button:hover:not(.active) { background: var(--bg); }
+        .auth-section { margin-bottom: 8px; }
+        .auth-section select { margin-bottom: 6px; }
+        .auth-section .input-row-auth { display: flex; gap: 8px; align-items: center; }
+        .auth-section .input-row-auth select { flex: 1; margin-bottom: 0; }
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+            padding: 10px 20px; border: none; border-radius: var(--radius-sm);
+            font-size: 0.88em; font-weight: 600; cursor: pointer; font-family: var(--font);
+            transition: all 0.2s; color: white;
+        }
+        .btn svg { width: 16px; height: 16px; }
+        .btn-primary { background: var(--primary); }
+        .btn-primary:hover { background: var(--primary-hover); transform: translateY(-1px); box-shadow: var(--shadow-md); }
+        .btn-success { background: var(--success); }
+        .btn-success:hover { background: var(--success-hover); }
+        .btn-danger { background: var(--danger); }
+        .btn-danger:hover { background: var(--danger-hover); }
+        .btn-warning { background: var(--warning); color: #1e293b; }
+        .btn-warning:hover { background: var(--warning-hover); }
+        .btn-outline {
+            background: var(--card); color: var(--primary); border: 1.5px solid var(--primary);
+            padding: 9px 16px;
+        }
+        .btn-outline:hover { background: var(--primary-light); }
+        .btn-sm { padding: 6px 12px; font-size: 0.8em; }
+        .btn-browse { white-space: nowrap; flex-shrink: 0; }
+        .schedule-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .schedule-options { display: none; }
+        .schedule-options.active { display: flex; align-items: center; gap: 10px; }
+        .checkbox-wrap {
+            display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+            background: var(--bg); border-radius: var(--radius-sm); cursor: pointer;
+        }
+        .checkbox-wrap input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--primary); cursor: pointer; }
+        .checkbox-wrap span { font-size: 0.88em; color: var(--text-secondary); }
+        .advanced-toggle {
+            display: flex; align-items: center; gap: 6px; cursor: pointer;
+            color: var(--primary); font-size: 0.88em; font-weight: 600; margin-bottom: 8px;
+            user-select: none;
+        }
+        .advanced-toggle:hover { text-decoration: underline; }
+        .advanced-body { display: none; padding: 14px; background: var(--bg); border-radius: var(--radius-sm); border: 1px solid var(--border); margin-bottom: 16px; }
+        .advanced-body.active { display: block; }
+        .advanced-body .form-group:last-child { margin-bottom: 0; }
+        .task-card {
+            background: var(--card); border-radius: var(--radius); padding: 18px;
+            margin-bottom: 12px; border: 1px solid var(--border); box-shadow: var(--shadow);
+            transition: box-shadow 0.2s, transform 0.2s;
+        }
+        .task-card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+        .task-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; gap: 8px; }
+        .task-paths { flex: 1; min-width: 0; }
+        .task-path { font-size: 0.88em; margin-bottom: 4px; display: flex; align-items: baseline; gap: 6px; }
+        .task-path .label { color: var(--text-muted); font-size: 0.85em; white-space: nowrap; }
+        .task-path .value { color: var(--text); font-family: "SF Mono", "Cascadia Code", Consolas, monospace; font-size: 0.85em; word-break: break-all; }
+        .task-meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+        .badge {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 3px 10px; border-radius: 20px; font-size: 0.75em; font-weight: 500;
+        }
+        .badge-blue { background: #dbeafe; color: #1d4ed8; }
+        .badge-green { background: #d1fae5; color: #065f46; }
+        .badge-amber { background: #fef3c7; color: #92400e; }
+        .badge-gray { background: #f1f5f9; color: #475569; }
+        .badge-purple { background: #ede9fe; color: #5b21b6; }
+        [data-theme="dark"] .badge-blue { background: #1e3a8a; color: #93c5fd; }
+        [data-theme="dark"] .badge-green { background: #064e3b; color: #6ee7b7; }
+        [data-theme="dark"] .badge-amber { background: #78350f; color: #fcd34d; }
+        [data-theme="dark"] .badge-gray { background: #334155; color: #cbd5e1; }
+        [data-theme="dark"] .badge-purple { background: #4c1d95; color: #c4b5fd; }
+        @media (prefers-color-scheme: dark) {
+            [data-theme="auto"] .badge-blue { background: #1e3a8a; color: #93c5fd; }
+            [data-theme="auto"] .badge-green { background: #064e3b; color: #6ee7b7; }
+            [data-theme="auto"] .badge-amber { background: #78350f; color: #fcd34d; }
+            [data-theme="auto"] .badge-gray { background: #334155; color: #cbd5e1; }
+            [data-theme="auto"] .badge-purple { background: #4c1d95; color: #c4b5fd; }
+        }
+        .task-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+        .task-remark { font-size: 0.82em; color: var(--text-muted); margin-top: 6px; font-style: italic; }
+        .task-detail {
+            margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border);
+            display: none; max-height: 320px; overflow-y: auto;
+        }
+        .task-detail.active { display: block; }
+        .task-detail pre {
+            font-size: 0.78em; background: var(--bg); padding: 10px; border-radius: var(--radius-sm);
+            white-space: pre-wrap; word-break: break-all; color: var(--text);
+            font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+            max-height: 240px; overflow-y: auto;
+        }
+        .task-detail-toggle {
+            font-size: 0.78em; color: var(--primary); cursor: pointer; margin-top: 8px;
+            display: inline-block; user-select: none;
+        }
+        .task-detail-toggle:hover { text-decoration: underline; }
+        .edit-panel {
+            display: none; margin-top: 14px; padding: 14px; background: var(--bg);
+            border-radius: var(--radius-sm); border: 1px solid var(--border);
+        }
+        .edit-panel .schedule-row { margin-bottom: 10px; }
+        .edit-panel .btn { margin-top: 8px; }
+        .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
+        .empty-state svg { width: 48px; height: 48px; margin-bottom: 12px; opacity: 0.4; }
+        .empty-state p { font-size: 0.9em; }
+        /* Modal */
+        .overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.5); z-index: 999; display: none; backdrop-filter: blur(2px); }
+        .modal {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: var(--card); padding: 0; border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-lg); z-index: 1000; width: 720px; max-width: 95vw;
+            display: none; overflow: hidden; max-height: 85vh;
+        }
+        .modal-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 16px 20px; border-bottom: 1px solid var(--border); background: var(--bg);
+        }
+        .modal-header h3 { font-size: 0.95em; font-weight: 600; }
+        .modal-header .btns { display: flex; gap: 8px; }
+        .modal-path { padding: 10px 20px; background: var(--primary-light); font-family: monospace; font-size: 0.82em; color: var(--primary); word-break: break-all; border-bottom: 1px solid var(--border); }
+        .modal-items { max-height: 520px; overflow-y: auto; padding: 8px; }
+        .modal-item {
+            padding: 9px 12px; cursor: pointer; display: flex; align-items: center; gap: 10px;
+            border-radius: var(--radius-sm); transition: background 0.15s; font-size: 0.88em;
+        }
+        .modal-item:hover { background: var(--bg); }
+        .modal-item .icon { font-size: 1.1em; flex-shrink: 0; }
+        .modal-item.dir .icon { color: var(--warning); }
+        .modal-item.file .icon { color: var(--text-muted); }
+        /* Toast */
+        .toast-container { position: fixed; top: 20px; right: 20px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; }
+        .toast {
+            padding: 12px 20px; border-radius: var(--radius-sm); color: white;
+            font-size: 0.88em; font-weight: 500; box-shadow: var(--shadow-lg);
+            animation: slideIn 0.3s ease, fadeOut 0.3s ease 2.7s forwards;
+            max-width: 360px;
+        }
+        .toast-success { background: var(--success); }
+        .toast-error { background: var(--danger); }
+        .toast-info { background: var(--primary); }
+        .toast-warning { background: var(--warning); color: #1e293b; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes fadeOut { to { opacity: 0; transform: translateY(-10px); } }
+        /* Loading */
+        .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.6s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        /* Sync Status */
+        .sync-status { display: none; }
+        .sync-status.active { display: block; }
+        .sync-status .card-title .pulse { width: 10px; height: 10px; background: var(--success); border-radius: 50%; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .sync-status .card-title .pulse.stopped { background: var(--warning); animation: none; }
+        .sync-status .card-title .pulse.done { background: var(--success); animation: none; }
+        .sync-status .card-title .pulse.failed { background: var(--danger); animation: none; }
+        .sync-progress { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+        .sync-stat { display: flex; align-items: center; gap: 4px; font-size: 0.85em; color: var(--text-secondary); }
+        .sync-stat strong { color: var(--text); }
+        .sync-current-file { font-size: 0.8em; color: var(--text-muted); margin-top: 8px; font-family: "SF Mono","Cascadia Code",Consolas,monospace; word-break: break-all; max-height: 2.4em; overflow: hidden; }
+        .sync-bar-wrap { flex: 1; min-width: 120px; height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; }
+        .sync-bar { height: 100%; background: linear-gradient(90deg, var(--primary), #6366f1); border-radius: 3px; transition: width 0.5s; width: 0; }
+        /* Logs */
+        .log-entry { padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 0.84em; }
+        .log-entry:last-child { border-bottom: none; }
+        .log-time { color: var(--text-muted); font-size: 0.9em; }
+        .log-paths { margin: 4px 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .log-paths .lbl { color: var(--text-muted); font-size: 0.85em; }
+        .log-paths .val { font-family: "SF Mono","Cascadia Code",Consolas,monospace; font-size: 0.85em; word-break: break-all; }
+        .log-arrow { color: var(--text-muted); }
+        .log-msg { color: var(--text-secondary); }
+        .log-output-toggle { font-size: 0.78em; color: var(--primary); cursor: pointer; margin-top: 4px; }
+        .log-output-toggle:hover { text-decoration: underline; }
+        .log-output { display: none; margin-top: 6px; }
+        .log-output.active { display: block; }
+        .log-output pre {
+            font-size: 0.78em; background: var(--bg); padding: 10px; border-radius: var(--radius-sm);
+            white-space: pre-wrap; word-break: break-all; color: var(--text);
+            font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+            max-height: 200px; overflow-y: auto;
+        }
+        .log-badge { font-size: 0.75em; padding: 2px 8px; border-radius: 10px; margin-left: 6px; }
+        .log-badge.success { background: #d1fae5; color: #065f46; }
+        .log-badge.fail { background: #fee2e2; color: #991b1b; }
+        .log-badge.manual { background: #dbeafe; color: #1d4ed8; }
+        .log-badge.schedule { background: #ede9fe; color: #5b21b6; }
+        [data-theme="dark"] .log-badge.success { background: #064e3b; color: #6ee7b7; }
+        [data-theme="dark"] .log-badge.fail { background: #7f1d1d; color: #fca5a5; }
+        [data-theme="dark"] .log-badge.manual { background: #1e3a8a; color: #93c5fd; }
+        [data-theme="dark"] .log-badge.schedule { background: #4c1d95; color: #c4b5fd; }
+        @media (prefers-color-scheme: dark) {
+            [data-theme="auto"] .log-badge.success { background: #064e3b; color: #6ee7b7; }
+            [data-theme="auto"] .log-badge.fail { background: #7f1d1d; color: #fca5a5; }
+            [data-theme="auto"] .log-badge.manual { background: #1e3a8a; color: #93c5fd; }
+            [data-theme="auto"] .log-badge.schedule { background: #4c1d95; color: #c4b5fd; }
+        }
+        /* Tabs */
+        .tab-bar { display: flex; gap: 0; border-bottom: 2px solid var(--border); margin-bottom: 20px; }
+        .tab-btn {
+            padding: 8px 20px; border: none; background: transparent; color: var(--text-muted);
+            cursor: pointer; font-size: 0.9em; font-weight: 600; font-family: var(--font);
+            border-bottom: 2px solid transparent; transition: all 0.2s;
+            white-space: nowrap; flex-shrink: 0; line-height: 1.3;
+        }
+        .tab-btn:hover { color: var(--text); background: var(--bg); }
+        .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        /* Collapsible */
+        .collapse-toggle {
+            cursor: pointer; user-select: none;
+        }
+        .collapse-toggle:hover { color: var(--primary); }
+        .collapse-body { transition: max-height 0.3s ease; overflow: hidden; }
+        .collapse-body.collapsed { max-height: 0; }
+        /* Last sync */
+        .last-sync { font-size: 0.8em; color: var(--text-muted); margin-top: 4px; display: flex; align-items: center; gap: 4px; }
+        .last-sync .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+        .last-sync .dot.ok { background: var(--success); }
+        .last-sync .dot.fail { background: var(--danger); }
+        .last-sync .dot.running { background: var(--primary); animation: pulse 1.5s infinite; }
+        .task-running { background: linear-gradient(135deg, #eff6ff, #e0e7ff); }
+        [data-theme="dark"] .task-running,
+        [data-theme="auto"] .task-running { background: linear-gradient(135deg, #1e3a8a, #312e81); }
+        /* Responsive */
+        @media (max-width: 768px) {
+            .main { padding: 16px 12px 40px; }
+            .card { padding: 16px; }
+            .app-header h1 { font-size: 1.3em; }
+            .app-header { padding: 18px 0; }
+            .theme-toggle { top: 12px; right: 12px; width: 32px; height: 32px; }
+            .tab-btn { padding: 8px 16px; font-size: 0.85em; }
+        }
+        @media (max-width: 640px) {
+            .input-row { flex-direction: column; align-items: stretch; }
+            .input-row .btn-browse { width: 100%; }
+            .input-row-2 { flex-direction: column; gap: 0; }
+            .task-actions { flex-direction: column; }
+            .task-actions .btn { width: 100%; }
+            .schedule-row { flex-direction: column; align-items: stretch; }
+            .schedule-options.active { flex-direction: column; }
+            .schedule-options.active select, .schedule-options.active input { width: 100%; }
+            .modal { width: 95vw; }
+            .remote-fields { padding: 10px; }
+            .toast { max-width: 90vw; }
+            .task-header { flex-direction: column; align-items: stretch; }
+            .sync-stat { font-size: 0.78em; }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-header">
+        <h1>&#x21C4; Rsync 同步中心</h1>
+        <p>支持本地与远程主机间的文件同步</p>
+        <p class="app-version">v{{ version }}</p>
+        <button class="theme-toggle" onclick="toggleTheme()" title="切换深色/浅色模式" aria-label="主题切换">
+            <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        </button>
+    </div>
+    <div class="main">
+        <!-- 同步状态 -->
+        <div class="card sync-status" id="syncStatus">
+            <div class="card-title" id="syncStatusTitle">
+                <span class="pulse" id="syncPulse"></span>
+                <span id="syncStatusText">同步状态</span>
+            </div>
+            <div class="sync-progress" id="syncProgress">
+                <div class="sync-bar-wrap"><div class="sync-bar" id="syncBar"></div></div>
+                <div class="sync-stat"><span id="syncFilesCount">0</span> 个文件</div>
+                <div class="sync-stat"><strong id="syncPercent">0%</strong></div>
+                <div class="sync-stat" id="syncSpeedStat" style="display:none">速度 <strong id="syncSpeed">0</strong></div>
+                <div class="sync-stat">运行 <strong id="syncElapsed">0s</strong></div>
+            </div>
+            <div class="sync-current-file" id="syncCurrentFile"></div>
+            <div class="task-actions" style="margin-top:12px">
+                <button class="btn btn-danger btn-sm" id="btnStopSync" onclick="stopRunningSync()">
+                    停止同步
+                </button>
+            </div>
+        </div>
+        <!-- 标签页切换 -->
+        <div class="tab-bar">
+            <button class="tab-btn active" data-tab="tasks" onclick="switchTab('tasks')">同步任务</button>
+            <button class="tab-btn" data-tab="logs" onclick="switchTab('logs')">同步日志</button>
+        </div>
+        <!-- 任务标签页 -->
+        <div class="tab-content active" id="tabTasks">
+            <div class="card">
+                <div class="card-title collapse-toggle" onclick="toggleCollapse('newTaskBody')" style="justify-content:space-between">
+                    <span style="display:flex;align-items:center;gap:8px">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
+                        新建同步任务
+                    </span>
+                    <span id="newTaskArrow" style="font-size:0.8em;transition:transform 0.3s;display:inline-block;transform:rotate(-90deg)">▼</span>
+                </div>
+                <div class="collapse-body" id="newTaskBody" style="max-height:0">
+            <!-- 源路径 -->
+            <div class="form-group">
+                <div class="form-label">源路径</div>
+                <div class="mode-toggle">
+                    <button type="button" class="active" onclick="togglePathMode('source','local')">本地</button>
+                    <button type="button" onclick="togglePathMode('source','remote')">远程</button>
+                </div>
+                <div class="remote-fields" id="source_remote_fields">
+                    <div class="input-row" style="gap:8px">
+                        <input type="text" id="source_host" placeholder="远程IP，如 192.168.1.100" style="flex:1">
+                        <input type="text" id="source_port" placeholder="端口" value="22" style="width:70px">
+                    </div>
+                    <input type="text" id="source_username" placeholder="用户名" value="root">
+                    <div class="auth-toggle">
+                        <button type="button" class="active" onclick="toggleAuthMode('source','password')">密码认证</button>
+                        <button type="button" onclick="toggleAuthMode('source','key')">密钥认证</button>
+                    </div>
+                    <div class="auth-section" id="source_auth_password">
+                        <input type="password" id="source_password" placeholder="SSH密码">
+                    </div>
+                    <div class="auth-section" id="source_auth_key" style="display:none">
+                        <select id="source_key_select"><option value="">加载中...</option></select>
+                        <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('source_key_upload').click()">上传密钥</button>
+                        <input type="file" id="source_key_upload" style="display:none" accept=".pem,.key,id_rsa,id_ed25519,id_ecdsa,id_dsa,*" onchange="uploadKey('source', this)">
+                    </div>
+                    <div class="remote-info" style="margin-bottom:6px">
+                        浏览远程目录和同步时均使用此凭据认证
+                        <span class="help-toggle" onclick="toggleHelp('helpSource')" style="color:var(--primary);cursor:pointer;font-size:0.85em;margin-left:4px;text-decoration:underline">使用帮助</span>
+                    </div>
+                    <div class="help-box" id="helpSource" style="display:none;font-size:0.78em;background:#fffbe6;border:1px solid #fde68a;border-radius:6px;padding:10px 12px;margin-bottom:8px;color:#92400e;line-height:1.6">
+                        <strong>远程→远程同步须知：</strong><br>
+                        当源和目标都是远程主机时，rsync 的连接是"本地→源端→目标端"两跳模式，<code style="background:#fef3c7;padding:1px 4px;border-radius:3px">sshpass</code> 只能注入源端的密码，无法控制第二跳到目标端。因此<strong>两端不能同时使用密码认证</strong>。<br><br>
+                        <strong>建议在目标端配置 SSH 密钥免密登录：</strong><br>
+                        1. 在<strong>源端主机</strong>上生成密钥对（若无）：<br>
+                        &nbsp;&nbsp;<code style="background:#fef3c7;padding:2px 6px;border-radius:3px">ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ""</code><br>
+                        2. 将公钥复制到<strong>目标端主机</strong>：<br>
+                        &nbsp;&nbsp;<code style="background:#fef3c7;padding:2px 6px;border-radius:3px">ssh-copy-id -p 端口 目标用户@目标IP</code><br>
+                        3. 然后在界面中源端选密码认证、目标端选"不认证"即可（源端到目标端自动使用密钥）。<br>
+                        4. 或者将源端私钥上传到本面板「密钥管理」中进行管理。
+                    </div>
+                </div>
+                <div class="input-row">
+                    <input type="text" id="source" placeholder="/home/path/ 或 user@host:/path/">
+                    <button class="btn btn-outline btn-sm btn-browse" onclick="openPathSelector('source')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+                        浏览
+                    </button>
+                </div>
+            </div>
+            <!-- 目标路径 -->
+            <div class="form-group">
+                <div class="form-label">目标路径</div>
+                <div class="mode-toggle">
+                    <button type="button" class="active" onclick="togglePathMode('destination','local')">本地</button>
+                    <button type="button" onclick="togglePathMode('destination','remote')">远程</button>
+                </div>
+                <div class="remote-fields" id="dest_remote_fields">
+                    <div class="input-row" style="gap:8px">
+                        <input type="text" id="dest_host" placeholder="远程IP，如 192.168.1.200" style="flex:1">
+                        <input type="text" id="dest_port" placeholder="端口" value="22" style="width:70px">
+                    </div>
+                    <input type="text" id="dest_username" placeholder="用户名" value="root">
+                    <div class="auth-toggle">
+                        <button type="button" class="active" onclick="toggleAuthMode('dest','password')">密码认证</button>
+                        <button type="button" onclick="toggleAuthMode('dest','key')">密钥认证</button>
+                    </div>
+                    <div class="auth-section" id="dest_auth_password">
+                        <input type="password" id="dest_password" placeholder="SSH密码">
+                    </div>
+                    <div class="auth-section" id="dest_auth_key" style="display:none">
+                        <select id="dest_key_select"><option value="">加载中...</option></select>
+                        <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('dest_key_upload').click()">上传密钥</button>
+                        <input type="file" id="dest_key_upload" style="display:none" accept=".pem,.key,id_rsa,id_ed25519,id_ecdsa,id_dsa,*" onchange="uploadKey('dest', this)">
+                    </div>
+                    <div class="remote-info" style="margin-bottom:6px">
+                        浏览远程目录和同步时均使用此凭据认证
+                        <span class="help-toggle" onclick="toggleHelp('helpDest')" style="color:var(--primary);cursor:pointer;font-size:0.85em;margin-left:4px;text-decoration:underline">使用帮助</span>
+                    </div>
+                    <div class="help-box" id="helpDest" style="display:none;font-size:0.78em;background:#fffbe6;border:1px solid #fde68a;border-radius:6px;padding:10px 12px;margin-bottom:8px;color:#92400e;line-height:1.6">
+                        <strong>远程→远程同步须知：</strong><br>
+                        当源和目标都是远程主机时，rsync 的连接是"本地→源端→目标端"两跳模式，<code style="background:#fef3c7;padding:1px 4px;border-radius:3px">sshpass</code> 只能注入源端的密码，无法控制第二跳到目标端。因此<strong>两端不能同时使用密码认证</strong>。<br><br>
+                        <strong>建议在目标端配置 SSH 密钥免密登录：</strong><br>
+                        1. 在<strong>源端主机</strong>上生成密钥对（若无）：<br>
+                        &nbsp;&nbsp;<code style="background:#fef3c7;padding:2px 6px;border-radius:3px">ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ""</code><br>
+                        2. 将公钥复制到<strong>目标端主机</strong>：<br>
+                        &nbsp;&nbsp;<code style="background:#fef3c7;padding:2px 6px;border-radius:3px">ssh-copy-id -p 端口 目标用户@目标IP</code><br>
+                        3. 然后在界面中源端选密码认证、目标端选"不认证"即可（源端到目标端自动使用密钥）。<br>
+                        4. 或者将源端私钥上传到本面板「密钥管理」中进行管理。
+                    </div>
+                </div>
+                <div class="input-row">
+                    <input type="text" id="destination" placeholder="/data/path/ 或 user@host:/path/">
+                    <button class="btn btn-outline btn-sm btn-browse" onclick="openPathSelector('destination')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+                        浏览
+                    </button>
+                </div>
+            </div>
+            <!-- 定时设置 -->
+            <div class="form-group">
+                <div class="form-label">定时设置（可选）</div>
+                <div class="schedule-row">
+                    <select id="schedule_type" onchange="toggleScheduleOptions()" style="width:auto;min-width:120px">
+                        <option value="none">不定时</option>
+                        <option value="interval">间隔执行</option>
+                        <option value="daily">每天</option>
+                        <option value="weekly">每周</option>
+                        <option value="monthly">每月</option>
+                    </select>
+                    <div id="daily_options" class="schedule-options"><input type="time" id="daily_time" style="width:auto"></div>
+                    <div id="weekly_options" class="schedule-options">
+                        <select id="week_day" style="width:auto;min-width:90px">
+                            <option value="0">周日</option><option value="1">周一</option><option value="2">周二</option>
+                            <option value="3">周三</option><option value="4">周四</option><option value="5">周五</option><option value="6">周六</option>
+                        </select>
+                        <input type="time" id="weekly_time" style="width:auto">
+                    </div>
+                    <div id="monthly_options" class="schedule-options">
+                        <input type="number" id="month_day" min="1" max="31" placeholder="日期" style="width:80px">
+                        <input type="time" id="monthly_time" style="width:auto">
+                    </div>
+                    <div id="interval_options" class="schedule-options">
+                        <input type="number" id="interval_value" min="1" placeholder="数值" style="width:80px">
+                        <select id="interval_unit" style="width:auto;min-width:70px">
+                            <option value="minutes">分钟</option>
+                            <option value="hours">小时</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <!-- 同步选项 -->
+            <div class="form-group">
+                <label class="checkbox-wrap">
+                    <input type="checkbox" id="delete_option">
+                    <span>启用 --delete（删除目标中源端没有的文件）</span>
+                </label>
+            </div>
+            <!-- 高级选项 -->
+            <div class="advanced-toggle" onclick="toggleAdvanced('newAdvanced')">
+                <span id="newAdvancedArrow" style="transition:transform 0.2s;display:inline-block">▶</span>
+                高级选项（包含/排除、限速、checksum、试运行）
+            </div>
+            <div class="advanced-body" id="newAdvanced">
+                <div class="form-group">
+                    <label class="checkbox-wrap" style="margin-bottom:10px">
+                        <input type="checkbox" id="checksum">
+                        <span>启用 checksum 校验（更慢但更安全）</span>
+                    </label>
+                    <label class="checkbox-wrap">
+                        <input type="checkbox" id="dry_run">
+                        <span>试运行（仅列出变更，不实际传输）</span>
+                    </label>
+                </div>
+                <div class="form-group">
+                    <div class="form-label">带宽限制（如 10M = 10MB/s，留空不限速）</div>
+                    <input type="text" id="bwlimit" placeholder="例如：10M、100K">
+                </div>
+                <div class="form-group">
+                    <div class="form-label">包含规则（每行一条，rsync --include 语法）</div>
+                    <textarea id="include_patterns" rows="3" placeholder="*.txt&#10;important/"></textarea>
+                </div>
+                <div class="form-group">
+                    <div class="form-label">排除规则（每行一条，rsync --exclude 语法）</div>
+                    <textarea id="exclude_patterns" rows="3" placeholder="*.tmp&#10;.git/&#10;node_modules/"></textarea>
+                </div>
+            </div>
+            <!-- 备注 -->
+            <div class="form-group">
+                <div class="form-label">备注</div>
+                <textarea id="remark" placeholder="可选备注说明..." rows="2"></textarea>
+            </div>
+            <button id="btnAddTask" class="btn btn-primary" onclick="addTask()" style="width:100%">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
+                添加任务
+            </button>
+                </div><!-- collapse-body -->
+            </div><!-- card -->
+            <!-- 任务列表 -->
+            <div class="card">
+                <div class="card-title">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                    同步任务列表
+                </div>
+                <div id="taskList"></div>
+            </div>
+        </div><!-- tabTasks -->
+        <!-- 日志标签页 -->
+        <div class="tab-content" id="tabLogs">
+            <div class="card">
+                <div class="card-title" style="justify-content:space-between">
+                    <span style="display:flex;align-items:center;gap:8px">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                        同步日志（最近50条）
+                    </span>
+                    <button class="btn btn-danger btn-sm" onclick="clearLogs()" style="margin:0">
+                        清除日志
+                    </button>
+                </div>
+                <div id="logList"><div class="empty-state"><p style="padding:20px">暂无同步日志</p></div></div>
+            </div>
+        </div><!-- tabLogs -->
+    </div>
+    <!-- 路径选择弹窗 -->
+    <div class="overlay" id="overlay" onclick="closePathSelector()"></div>
+    <div class="modal" id="pathSelector">
+        <div class="modal-header">
+            <h3>选择路径</h3>
+            <div class="btns">
+                <button class="btn btn-success btn-sm" onclick="confirmPath()">确定</button>
+                <button class="btn btn-danger btn-sm" onclick="closePathSelector()">关闭</button>
+            </div>
+        </div>
+        <div class="modal-path" id="currentPath">/</div>
+        <div class="modal-items" id="pathItems"></div>
+    </div>
+    <!-- Toast容器 -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+        // ===== 主题切换 =====
+        // 解析实际生效的主题：auto 模式下跟随系统 prefers-color-scheme
+        function resolveTheme(theme) {
+            if (theme === 'auto') {
+                return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+            }
+            return theme;
+        }
+        function initTheme() {
+            const saved = localStorage.getItem('rsync-web-theme') || 'auto';
+            document.documentElement.setAttribute('data-theme', saved);
+            // 监听系统主题变化（仅在 auto 模式生效时同步图标）
+            const mql = window.matchMedia('(prefers-color-scheme: dark)');
+            const onSystemChange = () => {
+                const cur = document.documentElement.getAttribute('data-theme') || 'auto';
+                if (cur === 'auto') updateThemeIcon('auto');
+            };
+            if (mql.addEventListener) mql.addEventListener('change', onSystemChange);
+            else if (mql.addListener) mql.addListener(onSystemChange);  // Safari < 14
+            updateThemeIcon(saved);
+        }
+        function toggleTheme() {
+            const cur = document.documentElement.getAttribute('data-theme') || 'auto';
+            // 显式选择时不再回退到 auto，只在 dark/light 之间循环
+            const next = cur === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', next);
+            localStorage.setItem('rsync-web-theme', next);
+            updateThemeIcon(next);
+        }
+        function updateThemeIcon(theme) {
+            const icon = document.getElementById('themeIcon');
+            if (!icon) return;
+            // auto 模式下，根据系统实际配色决定图标
+            const effective = resolveTheme(theme);
+            icon.innerHTML = effective === 'dark'
+                ? '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>'
+                : '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+        }
+
+        // ===== HTML转义防XSS =====
+        function esc(str) {
+            if (str === undefined || str === null) return '';
+            const div = document.createElement('div');
+            div.textContent = String(str);
+            return div.innerHTML;
+        }
+
+        // ===== Toast通知 =====
+        function showToast(msg, type='info') {
+            const c = document.getElementById('toastContainer');
+            const t = document.createElement('div');
+            t.className = `toast toast-${type}`;
+            t.textContent = msg;
+            c.appendChild(t);
+            setTimeout(() => t.remove(), 3000);
+        }
+
+        // ===== 标签页切换 =====
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.tab === tab);
+            });
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.getElementById('tabTasks').classList.toggle('active', tab === 'tasks');
+            document.getElementById('tabLogs').classList.toggle('active', tab === 'logs');
+            if (tab === 'logs') loadLogs();
+        }
+
+        // ===== 折叠面板 =====
+        let _collapseListener = null;
+        function toggleCollapse(id) {
+            const body = document.getElementById(id);
+            const arrow = document.getElementById('newTaskArrow');
+            const collapsed = body.style.maxHeight === '0px';
+            if (collapsed) {
+                if (_collapseListener) {
+                    body.removeEventListener('transitionend', _collapseListener);
+                }
+                body.style.maxHeight = body.scrollHeight + 'px';
+                _collapseListener = function h() {
+                    body.style.maxHeight = '';
+                    body.removeEventListener('transitionend', h);
+                    _collapseListener = null;
+                };
+                body.addEventListener('transitionend', _collapseListener);
+                if (arrow) arrow.style.transform = 'rotate(0deg)';
+            } else {
+                if (_collapseListener) {
+                    body.removeEventListener('transitionend', _collapseListener);
+                    _collapseListener = null;
+                }
+                body.style.maxHeight = body.scrollHeight + 'px';
+                requestAnimationFrame(() => { body.style.maxHeight = '0px'; });
+                if (arrow) arrow.style.transform = 'rotate(-90deg)';
+            }
+        }
+
+        // ===== 高级选项切换 =====
+        function toggleAdvanced(id) {
+            const body = document.getElementById(id);
+            const arrow = document.getElementById(id + 'Arrow');
+            const isActive = body.classList.toggle('active');
+            if (arrow) arrow.style.transform = isActive ? 'rotate(90deg)' : 'rotate(0deg)';
+        }
+
+        // ===== 帮助面板切换 =====
+        function toggleHelp(id) {
+            const el = document.getElementById(id);
+            if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+        }
+
+        // ===== 认证方式切换 & 密钥管理 =====
+        let cachedKeys = [];
+        function toggleAuthMode(pfx, mode) {
+            const toggle = document.getElementById(`${pfx}_remote_fields`).querySelector('.auth-toggle');
+            toggle.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+            if (mode === 'password') { toggle.children[0].classList.add('active'); }
+            else { toggle.children[1].classList.add('active'); }
+            document.getElementById(`${pfx}_auth_password`).style.display = mode === 'password' ? '' : 'none';
+            document.getElementById(`${pfx}_auth_key`).style.display = mode === 'key' ? '' : 'none';
+            if (mode === 'key') loadKeyList(pfx);
+        }
+        function getAuthMode(pfx) {
+            const toggle = document.getElementById(`${pfx}_remote_fields`).querySelector('.auth-toggle');
+            return toggle.children[1].classList.contains('active') ? 'key' : 'password';
+        }
+        function getAuthInfo(pfx) {
+            const port = document.getElementById(`${pfx}_port`).value || '22';
+            if (getAuthMode(pfx) === 'key') {
+                return { type: 'key', key: document.getElementById(`${pfx}_key_select`).value, port };
+            }
+            return { type: 'password', password: document.getElementById(`${pfx}_password`).value, port };
+        }
+        function loadKeyList(pfx) {
+            fetch('/keys').then(r => r.json()).then(keys => {
+                cachedKeys = keys;
+                const sel = document.getElementById(`${pfx}_key_select`);
+                sel.innerHTML = keys.length ? keys.map(k => `<option value="${esc(k.name)}">${esc(k.name)}</option>`).join('') : '<option value="">无可用密钥，请上传</option>';
+            });
+        }
+        function uploadKey(pfx, input) {
+            if (!input.files.length) return;
+            const fd = new FormData();
+            fd.append('file', input.files[0]);
+            fetch('/keys', { method: 'POST', body: fd })
+            .then(r => r.json()).then(d => {
+                if (d.success) {
+                    showToast(`密钥 ${d.filename} 上传成功`, 'success');
+                    loadKeyList(pfx);
+                    setTimeout(() => { document.getElementById(`${pfx}_key_select`).value = d.filename; }, 500);
+                } else showToast('上传失败: ' + d.error, 'error');
+            }).catch(() => showToast('上传失败', 'error'));
+            input.value = '';
+        }
+
+        // ===== 定时设置 =====
+        function toggleScheduleOptions() {
+            const type = document.getElementById('schedule_type').value;
+            document.querySelectorAll('.schedule-options').forEach(el => el.classList.remove('active'));
+            if (type !== 'none') document.getElementById(`${type}_options`).classList.add('active');
+        }
+        function getScheduleInfo() {
+            const type = document.getElementById('schedule_type').value;
+            if (type === 'none') return null;
+            const s = { type };
+            if (type === 'daily') s.time = document.getElementById('daily_time').value;
+            else if (type === 'weekly') { s.day = document.getElementById('week_day').value; s.time = document.getElementById('weekly_time').value; }
+            else if (type === 'monthly') { s.day = document.getElementById('month_day').value; s.time = document.getElementById('monthly_time').value; }
+            else if (type === 'interval') { s.interval = document.getElementById('interval_value').value; s.unit = document.getElementById('interval_unit').value; }
+            return s;
+        }
+
+        // ===== 添加任务 =====
+        function addTask() {
+            const btn = document.getElementById('btnAddTask');
+            if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> 添加中...'; }
+            try {
+                const source = document.getElementById('source').value;
+                const destination = document.getElementById('destination').value;
+                const schedule = getScheduleInfo();
+                const deleteOption = document.getElementById('delete_option').checked;
+                const checksum = document.getElementById('checksum').checked;
+                const dryRun = document.getElementById('dry_run').checked;
+                const bwlimit = document.getElementById('bwlimit').value.trim();
+                const includePatterns = document.getElementById('include_patterns').value;
+                const excludePatterns = document.getElementById('exclude_patterns').value;
+                const remark = document.getElementById('remark').value;
+                if (!source || !destination) { showToast('请填写源路径和目标路径', 'error'); return; }
+                const sourceAuth = getAuthInfo('source');
+                const destAuth = getAuthInfo('dest');
+                const fd = new FormData();
+                fd.append('source', source); fd.append('destination', destination);
+                fd.append('delete_option', deleteOption);
+                fd.append('checksum', checksum);
+                fd.append('dry_run', dryRun);
+                fd.append('bwlimit', bwlimit);
+                fd.append('include_patterns', includePatterns);
+                fd.append('exclude_patterns', excludePatterns);
+                fd.append('remark', remark);
+                fd.append('source_auth', JSON.stringify(sourceAuth));
+                fd.append('dest_auth', JSON.stringify(destAuth));
+                if (schedule) fd.append('schedule', JSON.stringify(schedule));
+                fetch('/tasks', { method: 'POST', body: fd })
+                .then(r => r.json()).then(d => {
+                    if (d.success) {
+                        showToast('任务添加成功', 'success');
+                        loadTasks();
+                        ['source','destination'].forEach(id => document.getElementById(id).value = '');
+                        document.getElementById('schedule_type').value = 'none';
+                        document.getElementById('delete_option').checked = false;
+                        document.getElementById('checksum').checked = false;
+                        document.getElementById('dry_run').checked = false;
+                        document.getElementById('bwlimit').value = '';
+                        document.getElementById('include_patterns').value = '';
+                        document.getElementById('exclude_patterns').value = '';
+                        document.getElementById('remark').value = '';
+                        ['source_host','dest_host'].forEach(id => document.getElementById(id).value = '');
+                        ['source_port','dest_port'].forEach(id => document.getElementById(id).value = '22');
+                        ['source_username','dest_username'].forEach(id => document.getElementById(id).value = 'root');
+                        ['source_password','dest_password'].forEach(id => document.getElementById(id).value = '');
+                        toggleScheduleOptions();
+                    } else showToast('添加失败: ' + d.error, 'error');
+                });
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg> 添加任务'; }
+            }
+        }
+
+        // ===== 同步执行 =====
+        let statusPollTimer = null;       // 快速轮询 (2s，同步进行中)
+        let bgPollTimer = null;           // 慢速轮询 (30s，总是运行)
+        let _lastSyncData = null;
+        let _lastSyncedTaskId = null;  // 跟踪上一次轮询的 task_id，避免无意义刷列表
+        function executeSync(taskId, btn) {
+            if (!btn) btn = document.querySelector(`[data-sync-id="${taskId}"]`);
+            if (!btn) return;
+            const orig = btn.innerHTML;
+            btn.innerHTML = '<span class="spinner"></span> 同步中...';
+            btn.disabled = true;
+            fetch(`/tasks/${taskId}/sync`, { method: 'POST' })
+            .then(r => r.json()).then(d => {
+                if (d.success) {
+                    if (d.error_count && d.error_count > 0) {
+                        showToast(`同步完成: 成功 ${d.files_synced||0} 个，失败 ${d.error_count} 个`, 'warning');
+                    } else {
+                        showToast('同步成功', 'success');
+                    }
+                } else showToast('同步失败: ' + (d.message || d.error), 'error');
+            }).catch(() => showToast('同步请求失败', 'error'))
+            .finally(() => {
+                btn.innerHTML = orig;
+                btn.disabled = false;
+            });
+            startStatusPolling();
+        }
+
+        function formatElapsed(seconds) {
+            if (seconds === undefined || seconds === null) return '';
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = seconds % 60;
+            if (h > 0) return `${h}h${m}m${s}s`;
+            if (m > 0) return `${m}m${s}s`;
+            return `${s}s`;
+        }
+
+        function updateSyncStatusUI(data) {
+            const panel = document.getElementById('syncStatus');
+            const pulse = document.getElementById('syncPulse');
+            const statusText = document.getElementById('syncStatusText');
+            const bar = document.getElementById('syncBar');
+            const filesEl = document.getElementById('syncFilesCount');
+            const percentEl = document.getElementById('syncPercent');
+            const speedEl = document.getElementById('syncSpeed');
+            const speedStat = document.getElementById('syncSpeedStat');
+            const elapsedEl = document.getElementById('syncElapsed');
+            const curFileEl = document.getElementById('syncCurrentFile');
+            const stopBtn = document.getElementById('btnStopSync');
+
+            if (data.status === 'running') {
+                _lastSyncData = data;
+                panel.classList.add('active');
+                pulse.className = 'pulse';
+                statusText.textContent = '正在同步: ' + esc(data.source || '') + ' → ' + esc(data.destination || '');
+                filesEl.textContent = data.files_count || 0;
+                const pct = data.progress_percent || 0;
+                percentEl.textContent = pct + '%';
+                bar.style.width = pct + '%';
+                if (data.transfer_speed) {
+                    speedStat.style.display = '';
+                    speedEl.textContent = data.transfer_speed;
+                } else {
+                    speedStat.style.display = 'none';
+                }
+                elapsedEl.textContent = formatElapsed(data.elapsed_seconds || 0);
+                curFileEl.textContent = data.current_file || '';
+                stopBtn.style.display = '';
+                bar.style.background = 'linear-gradient(90deg, var(--primary), #6366f1)';
+                // 定时同步在 schedule 库线程中发起，task_id 可能不变
+                // 因此仅在 task_id 变化时刷新一次任务列表（更新"正在同步"高亮）
+                if (data.task_id !== _lastSyncedTaskId) {
+                    _lastSyncedTaskId = data.task_id;
+                    loadTasks();
+                }
+            } else if (data.status === 'success' || data.status === 'done') {
+                panel.classList.add('active');
+                pulse.className = 'pulse done';
+                statusText.textContent = '同步完成: ' + esc(data.source || '') + ' → ' + esc(data.destination || '');
+                filesEl.textContent = data.files_count || 0;
+                percentEl.textContent = '100%';
+                bar.style.width = '100%';
+                bar.style.background = 'var(--success)';
+                speedStat.style.display = 'none';
+                elapsedEl.textContent = formatElapsed(data.elapsed_seconds || 0);
+                curFileEl.textContent = '';
+                stopBtn.style.display = 'none';
+                stopStatusPolling();
+                _lastSyncData = null;
+                _lastSyncedTaskId = null;
+                loadLogs();
+                loadTasks();
+                setTimeout(() => { panel.classList.remove('active'); }, 5000);
+            } else if (data.status === 'failed') {
+                panel.classList.add('active');
+                pulse.className = 'pulse failed';
+                statusText.textContent = '同步失败: ' + esc(data.source || '') + ' → ' + esc(data.destination || '');
+                filesEl.textContent = data.files_count || 0;
+                percentEl.textContent = '100%';
+                bar.style.width = '100%';
+                bar.style.background = 'var(--danger)';
+                speedStat.style.display = 'none';
+                elapsedEl.textContent = formatElapsed(data.elapsed_seconds || 0);
+                curFileEl.textContent = '';
+                stopBtn.style.display = 'none';
+                stopStatusPolling();
+                _lastSyncData = null;
+                _lastSyncedTaskId = null;
+                loadLogs();
+                loadTasks();
+                setTimeout(() => { panel.classList.remove('active'); }, 8000);
+            } else if (data.status === 'stopped') {
+                panel.classList.add('active');
+                pulse.className = 'pulse stopped';
+                statusText.textContent = '同步已停止: ' + esc(data.source || '') + ' → ' + esc(data.destination || '');
+                filesEl.textContent = data.files_count || 0;
+                percentEl.textContent = '';
+                bar.style.width = '100%';
+                bar.style.background = 'var(--warning)';
+                speedStat.style.display = 'none';
+                elapsedEl.textContent = formatElapsed(data.elapsed_seconds || 0);
+                curFileEl.textContent = '';
+                stopBtn.style.display = 'none';
+                stopStatusPolling();
+                _lastSyncData = null;
+                _lastSyncedTaskId = null;
+                loadLogs();
+                loadTasks();
+                setTimeout(() => { panel.classList.remove('active'); }, 5000);
+            } else if (!data.running) {
+                stopStatusPolling();
+                _lastSyncData = null;
+                _lastSyncedTaskId = null;
+                if (panel.classList.contains('active')) {
+                    panel.classList.remove('active');
+                    loadLogs();
+                }
+            }
+        }
+
+        function checkSyncStatus() {
+            fetch('/sync/status').then(r => r.json()).then(d => {
+                if (d.running !== false) {
+                    updateSyncStatusUI(d);
+                } else {
+                    // 没有同步在运行：关闭快速轮询，保留后台慢速轮询
+                    if (statusPollTimer) { clearInterval(statusPollTimer); statusPollTimer = null; }
+                    _lastSyncData = null;
+                    _lastSyncedTaskId = null;
+                    const panel = document.getElementById('syncStatus');
+                    if (panel.classList.contains('active')) {
+                        panel.classList.remove('active');
+                        loadLogs();
+                        loadTasks();
+                    }
+                }
+            }).catch(() => {});
+        }
+
+        function startStatusPolling() {
+            if (statusPollTimer) clearInterval(statusPollTimer);
+            statusPollTimer = setInterval(checkSyncStatus, 2000);
+            setTimeout(checkSyncStatus, 500);
+        }
+
+        function stopStatusPolling() {
+            if (statusPollTimer) { clearInterval(statusPollTimer); statusPollTimer = null; }
+        }
+
+        function startBackgroundPolling() {
+            // 后台慢速轮询：每 30 秒检查一次，检测定时同步是否启动
+            if (bgPollTimer) clearInterval(bgPollTimer);
+            bgPollTimer = setInterval(function() {
+                fetch('/sync/status').then(r => r.json()).then(d => {
+                    if (d.running !== false) {
+                        updateSyncStatusUI(d);
+                        startStatusPolling();
+                    }
+                }).catch(() => {});
+            }, 30000);
+        }
+
+        function stopRunningSync() {
+            const stopBtn = document.getElementById('btnStopSync');
+            if (!confirm('确定要停止当前正在运行的同步任务吗？')) return;
+            stopBtn.disabled = true;
+            stopBtn.innerHTML = '<span class="spinner"></span> 停止中...';
+            fetch('/sync/stop', { method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'sync_key=' })
+            .then(r => r.json()).then(d => {
+                if (d.success) showToast('同步任务已停止', 'warning');
+                else showToast('停止失败: ' + d.error, 'error');
+            }).catch(() => showToast('停止请求失败', 'error'))
+            .finally(() => { stopBtn.disabled = false; stopBtn.innerHTML = '停止同步'; });
+        }
+
+        function loadLogs() {
+            fetch('/logs').then(r => r.json()).then(logs => {
+                lastLogsCache = logs;
+                const el = document.getElementById('logList');
+                const recentLogs = logs.slice(0, 50);
+                if (!recentLogs.length) {
+                    el.innerHTML = '<div class="empty-state"><p style="padding:20px">暂无同步日志</p></div>';
+                    return;
+                }
+                el.innerHTML = recentLogs.map((log, i) => {
+                    const successBadge = log.success
+                        ? '<span class="log-badge success">成功</span>'
+                        : '<span class="log-badge fail">失败</span>';
+                    const triggerBadge = log.trigger === 'schedule'
+                        ? '<span class="log-badge schedule">定时</span>'
+                        : '<span class="log-badge manual">手动</span>';
+                    const src = log.source ? esc(log.source) : '';
+                    const dst = log.destination ? esc(log.destination) : '';
+                    let statHtml = esc(log.message);
+                    if (log.files_synced !== undefined && log.error_count > 0) {
+                        statHtml = `<span style="color:var(--success)">成功 ${log.files_synced} 个</span>，<span style="color:var(--danger)">失败 ${log.error_count} 个</span>`;
+                    }
+                    const hasOutput = log.output && log.output.length > 0;
+                    return `<div class="log-entry">
+                        <div class="log-time">${esc(log.time)} ${successBadge} ${triggerBadge}</div>
+                        <div class="log-paths">
+                            <span class="lbl">源:</span><span class="val">${src}</span>
+                            <span class="log-arrow">→</span>
+                            <span class="lbl">目标:</span><span class="val">${dst}</span>
+                        </div>
+                        <div class="log-msg">${statHtml}</div>
+                        ${hasOutput ? `<span class="log-output-toggle" onclick="toggleLogOutput(${i})">查看完整输出 ▾</span>
+                        <div class="log-output" id="logOutput${i}"><pre>${esc(log.output)}</pre></div>` : ''}
+                    </div>`;
+                }).join('');
+            }).catch(() => {});
+        }
+
+        function toggleLogOutput(idx) {
+            const el = document.getElementById('logOutput' + idx);
+            if (el) el.classList.toggle('active');
+        }
+
+        function clearLogs() {
+            if (!confirm('确定要清除所有同步日志吗？此操作不可撤销。')) return;
+            fetch('/logs', { method: 'DELETE' })
+            .then(r => r.json()).then(d => {
+                if (d.success) {
+                    showToast('日志已清除', 'success');
+                    loadLogs();
+                } else showToast('清除失败: ' + d.error, 'error');
+            }).catch(() => showToast('清除请求失败', 'error'));
+        }
+
+        // ===== 任务列表 =====
+        let lastLogsCache = [];
+
+        function getLastSyncInfo(taskId) {
+            const log = lastLogsCache.find(l => l.task_id === taskId);
+            if (!log) return null;
+            return { success: log.success, time: log.time, error_count: log.error_count || 0, files_synced: log.files_synced || 0 };
+        }
+
+        function loadTasks() {
+            Promise.all([
+                fetch('/tasks').then(r => r.json()),
+                fetch('/logs').then(r => r.json().catch(() => []))
+            ]).then(([tasks, logs]) => {
+                lastLogsCache = logs;
+                const el = document.getElementById('taskList');
+                if (!tasks.length) {
+                    el.innerHTML = '<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg><p>暂无同步任务</p></div>';
+                    return;
+                }
+                el.innerHTML = tasks.map(task => {
+                    const lastSync = getLastSyncInfo(task.id);
+                    let lastSyncHtml = '';
+                    const isRunning = _lastSyncData && _lastSyncData.status === 'running' && _lastSyncData.task_id === task.id;
+                    const cardExtraClass = isRunning ? ' task-running' : '';
+                    if (isRunning) {
+                        const pct = _lastSyncData.progress_percent || 0;
+                        lastSyncHtml = `<div class="last-sync"><span class="dot running"></span>正在同步... 已传输 ${_lastSyncData.files_count||0} 个文件，运行 ${formatElapsed(_lastSyncData.elapsed_seconds||0)} (${pct}%)</div>`;
+                    } else if (lastSync) {
+                        const dotClass = lastSync.success ? 'ok' : 'fail';
+                        const statusText = lastSync.success ? '成功' : '失败';
+                        let syncDetail = esc(lastSync.time) + ' (' + statusText + ')';
+                        if (lastSync.error_count > 0) {
+                            syncDetail = `${esc(lastSync.time)} (同步 ${lastSync.files_synced||0}，<span style="color:var(--danger)">失败 ${lastSync.error_count}</span>)`;
+                        }
+                        lastSyncHtml = `<div class="last-sync"><span class="dot ${dotClass}"></span>上次同步: ${syncDetail}</div>`;
+                    }
+                    let schText = '无定时';
+                    let schBadge = 'gray';
+                    if (task.schedule) {
+                        const s = task.schedule;
+                        schBadge = 'blue';
+                        if (s.type === 'daily') schText = `每天 ${s.time}`;
+                        else if (s.type === 'weekly') { schText = `每周${['日','一','二','三','四','五','六'][s.day]} ${s.time}`; }
+                        else if (s.type === 'monthly') schText = `每月${s.day}日 ${s.time}`;
+                        else if (s.type === 'interval') schText = `每${s.interval}${s.unit==='minutes'?'分钟':'小时'}`;
+                    }
+                    const isRemoteSrc = task.source && task.source.includes('@') && task.source.includes(':');
+                    const isRemoteDst = task.destination && task.destination.includes('@') && task.destination.includes(':');
+                    const srcAuth = task.source_auth || (task.source_password ? {type:'password',password:task.source_password} : {type:'password',password:''});
+                    const dstAuth = task.dest_auth || (task.dest_password ? {type:'password',password:task.dest_password} : {type:'password',password:''});
+                    const srcAuthLabel = srcAuth.type === 'key' ? `🔑${esc(srcAuth.key||'')}` : '🔒密码';
+                    const dstAuthLabel = dstAuth.type === 'key' ? `🔑${esc(dstAuth.key||'')}` : '🔒密码';
+                    const srcPortLabel = srcAuth.port && srcAuth.port !== '22' ? `:${esc(srcAuth.port)}` : '';
+                    const dstPortLabel = dstAuth.port && dstAuth.port !== '22' ? `:${esc(dstAuth.port)}` : '';
+                    const sd = task.schedule ? JSON.stringify(task.schedule).replace(/"/g, '&quot;').replace(/\\/g, '\\\\') : 'null';
+                    const sa = JSON.stringify(srcAuth).replace(/"/g, '&quot;').replace(/\\/g, '\\\\');
+                    const da = JSON.stringify(dstAuth).replace(/"/g, '&quot;').replace(/\\/g, '\\\\');
+                    const extraBadges = [];
+                    if (task.next_run) extraBadges.push(`<span class="badge badge-blue">下次 ${esc(task.next_run)}</span>`);
+                    if (task.checksum) extraBadges.push('<span class="badge badge-purple">checksum</span>');
+                    if (task.dry_run) extraBadges.push('<span class="badge badge-purple">dry-run</span>');
+                    if (task.bwlimit) extraBadges.push(`<span class="badge badge-purple">限速 ${esc(task.bwlimit)}</span>`);
+                    if (task.include_patterns) extraBadges.push('<span class="badge badge-purple">含过滤</span>');
+                    if (task.exclude_patterns) extraBadges.push('<span class="badge badge-purple">排过滤</span>');
+                    const lastLog = lastSync ? lastLogsCache.find(l => l.task_id === task.id) : null;
+                    const hasLogOutput = lastLog && lastLog.output && lastLog.output.length > 0;
+                    return `<div class="task-card${cardExtraClass}">
+                        <div class="task-header">
+                            <div class="task-paths">
+                                <div class="task-path"><span class="label">源</span><span class="value">${esc(task.source)}</span></div>
+                                <div class="task-path"><span class="label">目标</span><span class="value">${esc(task.destination)}</span></div>
+                            </div>
+                        </div>
+                        <div class="task-meta">
+                            <span class="badge badge-${schBadge}">${esc(schText)}</span>
+                            ${task.delete_option ? '<span class="badge badge-amber">--delete</span>' : ''}
+                            ${isRemoteSrc ? `<span class="badge badge-green">远程源${srcPortLabel} ${srcAuthLabel}</span>` : ''}
+                            ${isRemoteDst ? `<span class="badge badge-green">远程目标${dstPortLabel} ${dstAuthLabel}</span>` : ''}
+                            ${extraBadges.join('')}
+                            <span class="badge badge-gray">${esc(task.created_at)}</span>
+                        </div>
+                        ${task.remark ? `<div class="task-remark">${esc(task.remark)}</div>` : ''}
+                        ${lastSyncHtml}
+                        <div class="task-actions">
+                            <button class="btn btn-success btn-sm" data-sync-id="${task.id}" onclick="executeSync(${task.id}, this)">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
+                                立即同步
+                            </button>
+                            <button class="btn btn-warning btn-sm" onclick="showEditPanel(${task.id},'${sd}','${sa}','${da}')">编辑</button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteTask(${task.id})">删除</button>
+                        </div>
+                        ${hasLogOutput ? `<span class="task-detail-toggle" onclick="toggleTaskDetail(${task.id})">查看最近输出 ▾</span>
+                        <div class="task-detail" id="taskDetail${task.id}"><pre>${esc(lastLog.output)}</pre></div>` : ''}
+                        <div id="edit-schedule-${task.id}" class="edit-panel">
+                            <div style="font-weight:600;font-size:0.85em;margin-bottom:8px;color:var(--text-secondary)">⏰ 定时设置</div>
+                            <div class="schedule-row">
+                                <select id="edit_schedule_type_${task.id}" onchange="toggleEditScheduleOptions(${task.id})" style="width:auto;min-width:120px">
+                                    <option value="none">不定时</option><option value="interval">间隔执行</option>
+                                    <option value="daily">每天</option><option value="weekly">每周</option><option value="monthly">每月</option>
+                                </select>
+                                <div id="edit_interval_options_${task.id}" class="schedule-options">
+                                    <input type="number" id="edit_interval_value_${task.id}" min="1" placeholder="数值" style="width:80px">
+                                    <select id="edit_interval_unit_${task.id}" style="width:auto;min-width:70px"><option value="minutes">分钟</option><option value="hours">小时</option></select>
+                                </div>
+                                <div id="edit_daily_options_${task.id}" class="schedule-options"><input type="time" id="edit_daily_time_${task.id}" style="width:auto"></div>
+                                <div id="edit_weekly_options_${task.id}" class="schedule-options">
+                                    <select id="edit_week_day_${task.id}" style="width:auto;min-width:90px">
+                                        <option value="0">周日</option><option value="1">周一</option><option value="2">周二</option>
+                                        <option value="3">周三</option><option value="4">周四</option><option value="5">周五</option>
+                                        <option value="6">周六</option>
+                                    </select>
+                                    <input type="time" id="edit_weekly_time_${task.id}" style="width:auto">
+                                </div>
+                                <div id="edit_monthly_options_${task.id}" class="schedule-options">
+                                    <input type="number" id="edit_month_day_${task.id}" min="1" max="31" placeholder="日期" style="width:80px">
+                                    <input type="time" id="edit_monthly_time_${task.id}" style="width:auto">
+                                </div>
+                            </div>
+                            ${isRemoteSrc || isRemoteDst ? `<div style="font-weight:600;font-size:0.85em;margin:12px 0 8px;color:var(--text-secondary)">🔐 凭据设置 <span style="font-weight:400;color:var(--text-muted)">(留空则不修改)</span></div>
+                            ${isRemoteSrc ? `<div style="margin-bottom:8px"><label style="font-size:0.82em;color:var(--text-secondary)">源端认证:</label>
+                                <div class="input-row-auth">
+                                    <input type="password" id="edit_src_pwd_${task.id}" placeholder="新密码（留空不改）" style="flex:1">
+                                    <select id="edit_src_key_${task.id}" style="flex:1"><option value="">不修改密钥</option></select>
+                                    <input type="text" id="edit_src_port_${task.id}" value="${esc(srcAuth.port||'22')}" placeholder="端口" style="width:65px">
+                                </div></div>` : ''}
+                            ${isRemoteDst ? `<div style="margin-bottom:8px"><label style="font-size:0.82em;color:var(--text-secondary)">目标端认证:</label>
+                                <div class="input-row-auth">
+                                    <input type="password" id="edit_dst_pwd_${task.id}" placeholder="新密码（留空不改）" style="flex:1">
+                                    <select id="edit_dst_key_${task.id}" style="flex:1"><option value="">不修改密钥</option></select>
+                                    <input type="text" id="edit_dst_port_${task.id}" value="${esc(dstAuth.port||'22')}" placeholder="端口" style="width:65px">
+                                </div></div>` : ''}` : ''}
+                            <div style="display:flex;gap:8px;margin-top:10px">
+                                <button class="btn btn-primary btn-sm" onclick="saveEdit(${task.id})">保存</button>
+                                <button class="btn btn-outline btn-sm" onclick="cancelEditSchedule(${task.id})">取消</button>
+                            </div>
+                        </div>
+                    </div>`;
+                }).join('');
+            }).catch(() => {
+                document.getElementById('taskList').innerHTML = '<div class="empty-state"><p>加载任务失败，请刷新页面</p></div>';
+            });
+        }
+
+        function toggleTaskDetail(id) {
+            const el = document.getElementById('taskDetail' + id);
+            if (el) el.classList.toggle('active');
+        }
+
+        function deleteTask(taskId) {
+            if (!confirm('确定删除此任务？')) return;
+            fetch(`/tasks/${taskId}`, { method: 'DELETE' }).then(r => r.json()).then(d => {
+                if (d.success) { showToast('任务已删除', 'success'); loadTasks(); }
+            });
+        }
+
+        // ===== 路径选择器 =====
+        let currentTarget = null, currentSelectedPath = null;
+        let browsingMode = 'local', browsingHost = '', browsingPort = '22', browsingUsername = '', browsingAuth = {};
+
+        function togglePathMode(target, mode) {
+            const fieldsId = target === 'source' ? 'source_remote_fields' : 'dest_remote_fields';
+            const fields = document.getElementById(fieldsId);
+            const toggle = fields.previousElementSibling;
+            toggle.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+            if (mode === 'local') { toggle.children[0].classList.add('active'); fields.classList.remove('active'); }
+            else { toggle.children[1].classList.add('active'); fields.classList.add('active'); }
+        }
+
+        function openPathSelector(target) {
+            currentTarget = target; currentSelectedPath = null;
+            const fieldsId = target === 'source' ? 'source_remote_fields' : 'dest_remote_fields';
+            const fields = document.getElementById(fieldsId);
+            document.getElementById('overlay').style.display = 'block';
+            document.getElementById('pathSelector').style.display = 'block';
+            if (fields.classList.contains('active')) {
+                browsingMode = 'remote';
+                const pfx = target === 'source' ? 'source' : 'dest';
+                browsingHost = document.getElementById(pfx+'_host').value;
+                browsingPort = document.getElementById(pfx+'_port').value || '22';
+                browsingUsername = document.getElementById(pfx+'_username').value || 'root';
+                browsingAuth = getAuthInfo(pfx);
+                if (!browsingHost) { showToast('请先填写远程主机地址', 'error'); closePathSelector(); return; }
+                loadRemotePath('/');
+            } else {
+                browsingMode = 'local';
+                const init = document.getElementById(target).value || (target === 'source' ? '/home' : '/data');
+                loadPath(init);
+            }
+        }
+
+        function selectPath(path, type) {
+            if (type === 'directory') loadPath(path);
+            currentSelectedPath = path;
+        }
+        function selectRemotePath(path, type) {
+            if (type === 'directory') loadRemotePath(path);
+            currentSelectedPath = `${browsingUsername}@${browsingHost}:${path}`;
+        }
+        function confirmPath() {
+            if (currentSelectedPath) document.getElementById(currentTarget).value = currentSelectedPath;
+            closePathSelector();
+        }
+        function closePathSelector() {
+            document.getElementById('overlay').style.display = 'none';
+            document.getElementById('pathSelector').style.display = 'none';
+            currentTarget = null; currentSelectedPath = null;
+        }
+
+        function renderItems(data, clickFn) {
+            document.getElementById('currentPath').textContent = data.current_path;
+            const c = document.getElementById('pathItems');
+            if (!data.items || !data.items.length) {
+                c.innerHTML = '<div class="empty-state" style="padding:20px"><p>空目录</p></div>';
+                return;
+            }
+            c.innerHTML = data.items.map(item => {
+                const safePath = esc(item.path).replace(/'/g, '&#39;');
+                const safeName = esc(item.name);
+                return `<div class="modal-item ${item.type==='directory'?'dir':'file'}" onclick="${clickFn}('${safePath}','${item.type}')">
+                    <span class="icon">${item.type==='directory'?'&#128193;':'&#128196;'}</span>${safeName}
+                </div>`;
+            }).join('');
+        }
+        function loadPath(path) {
+            fetch(`/list_dir?path=${encodeURIComponent(path)}`).then(r=>r.json()).then(d => renderItems(d, 'selectPath'));
+        }
+        function loadRemotePath(path) {
+            const body = { host:browsingHost, port:browsingPort, username:browsingUsername, path, ...browsingAuth };
+            fetch('/list_remote_dir', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) }).then(r=>r.json()).then(d => {
+                if (d.error) { showToast(d.error, 'error'); return; }
+                renderItems(d, 'selectRemotePath');
+            }).catch(() => showToast('连接远程失败', 'error'));
+        }
+
+        // ===== 编辑定时 + 凭据 =====
+        function showEditPanel(taskId, scheduleStr, srcAuthStr, dstAuthStr) {
+            const div = document.getElementById(`edit-schedule-${taskId}`);
+            if (!div) return;
+            div.style.display = 'block';
+            const sel = document.getElementById(`edit_schedule_type_${taskId}`);
+            if (!sel) return;
+            let s = null;
+            try { s = JSON.parse(scheduleStr.replace(/&quot;/g, '"')); } catch(e) {}
+            if (s) {
+                sel.value = s.type;
+                if (s.type==='daily') document.getElementById(`edit_daily_time_${taskId}`).value = s.time;
+                else if (s.type==='weekly') { document.getElementById(`edit_week_day_${taskId}`).value = s.day; document.getElementById(`edit_weekly_time_${taskId}`).value = s.time; }
+                else if (s.type==='monthly') { document.getElementById(`edit_month_day_${taskId}`).value = s.day; document.getElementById(`edit_monthly_time_${taskId}`).value = s.time; }
+                else if (s.type==='interval') { document.getElementById(`edit_interval_value_${taskId}`).value = s.interval; document.getElementById(`edit_interval_unit_${taskId}`).value = s.unit; }
+            } else sel.value = 'none';
+            toggleEditScheduleOptions(taskId);
+            fetch('/keys').then(r=>r.json()).then(keys => {
+                const keyOpts = keys.map(k => `<option value="${esc(k.name)}">${esc(k.name)}</option>`).join('');
+                const srcKeySel = document.getElementById(`edit_src_key_${taskId}`);
+                const dstKeySel = document.getElementById(`edit_dst_key_${taskId}`);
+                if (srcKeySel) srcKeySel.innerHTML = '<option value="">不修改密钥</option>' + keyOpts;
+                if (dstKeySel) dstKeySel.innerHTML = '<option value="">不修改密钥</option>' + keyOpts;
+            });
+        }
+        function toggleEditScheduleOptions(taskId) {
+            const type = document.getElementById(`edit_schedule_type_${taskId}`).value;
+            document.querySelectorAll(`#edit-schedule-${taskId} .schedule-options`).forEach(el => el.classList.remove('active'));
+            if (type !== 'none') document.getElementById(`edit_${type}_options_${taskId}`).classList.add('active');
+        }
+        function getEditScheduleInfo(taskId) {
+            const type = document.getElementById(`edit_schedule_type_${taskId}`).value;
+            if (type === 'none') return null;
+            const s = { type };
+            if (type==='daily') s.time = document.getElementById(`edit_daily_time_${taskId}`).value;
+            else if (type==='weekly') { s.day = document.getElementById(`edit_week_day_${taskId}`).value; s.time = document.getElementById(`edit_weekly_time_${taskId}`).value; }
+            else if (type==='monthly') { s.day = document.getElementById(`edit_month_day_${taskId}`).value; s.time = document.getElementById(`edit_monthly_time_${taskId}`).value; }
+            else if (type==='interval') { s.interval = document.getElementById(`edit_interval_value_${taskId}`).value; s.unit = document.getElementById(`edit_interval_unit_${taskId}`).value; }
+            return s;
+        }
+        function saveEdit(taskId) {
+            const schedule = getEditScheduleInfo(taskId);
+            const body = { schedule };
+            const srcPwdEl = document.getElementById(`edit_src_pwd_${taskId}`);
+            const srcKeyEl = document.getElementById(`edit_src_key_${taskId}`);
+            const srcPortEl = document.getElementById(`edit_src_port_${taskId}`);
+            const dstPwdEl = document.getElementById(`edit_dst_pwd_${taskId}`);
+            const dstKeyEl = document.getElementById(`edit_dst_key_${taskId}`);
+            const dstPortEl = document.getElementById(`edit_dst_port_${taskId}`);
+            if (srcPwdEl || srcKeyEl) {
+                const pwd = srcPwdEl ? srcPwdEl.value : '';
+                const key = srcKeyEl ? srcKeyEl.value : '';
+                const port = srcPortEl ? (srcPortEl.value || '22') : '22';
+                if (pwd) body.source_auth = { type: 'password', password: pwd, port };
+                else if (key) body.source_auth = { type: 'key', key: key, port };
+                // 如果没填新密码也没选新密钥，说明用户只想改 schedule，不碰 auth
+            }
+            if (dstPwdEl || dstKeyEl) {
+                const pwd = dstPwdEl ? dstPwdEl.value : '';
+                const key = dstKeyEl ? dstKeyEl.value : '';
+                const port = dstPortEl ? (dstPortEl.value || '22') : '22';
+                if (pwd) body.dest_auth = { type: 'password', password: pwd, port };
+                else if (key) body.dest_auth = { type: 'key', key: key, port };
+            }
+            fetch(`/tasks/${taskId}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
+            .then(r=>r.json()).then(d => {
+                if (d.success) { showToast('设置已保存', 'success'); loadTasks(); }
+                else showToast('保存失败: ' + d.error, 'error');
+            });
+            document.getElementById(`edit-schedule-${taskId}`).style.display = 'none';
+        }
+        function cancelEditSchedule(taskId) { document.getElementById(`edit-schedule-${taskId}`).style.display = 'none'; }
+
+        // 初始化
+        initTheme();
+        loadTasks();
+        // 启动时立即检查一次同步状态 + 开启后台轮询（检测定时同步）
+        checkSyncStatus();
+        startBackgroundPolling();
+    </script>
+</body>
+</html>
