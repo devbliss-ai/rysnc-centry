@@ -1180,7 +1180,7 @@ def _run_rsync_with_progress(cmd, env=None, sync_info=None):
     global _running_sync
 
     # 在 cmd 中检测是否需要启用 --info=progress2（用于显示真实百分比）
-    # dry_run(--list-only) 与 progress2 互斥，仅在普通模式下追加
+    # dry_run(--dry-run) 与 progress2 互斥，仅在普通模式下追加
     has_progress2 = '--info=progress2' in cmd
     use_progress2 = has_progress2 or (
         '--list-only' not in cmd and '-n' not in cmd and '--dry-run' not in cmd
@@ -1363,7 +1363,7 @@ def run_sync(source, destination, delete_option=True, source_auth=None, dest_aut
     if checksum:
         cmd.append('--checksum')
     if dry_run:
-        cmd.append('--list-only')  # 仅列出变更，不实际传输
+        cmd.append('--dry-run')
     if bwlimit:
         cmd.append(f'--bwlimit={bwlimit}')
 
@@ -2231,7 +2231,7 @@ def preview_command(task_id):
     if checksum:
         cmd.append('--checksum')
     if dry_run:
-        cmd.append('--list-only')
+        cmd.append('--dry-run')
     if bwlimit:
         cmd.append(f'--bwlimit={bwlimit}')
     for pat in include_patterns:
