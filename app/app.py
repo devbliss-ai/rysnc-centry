@@ -1407,18 +1407,23 @@ def run_sync(source, destination, delete_option=True, source_auth=None, dest_aut
 
     # 网络中断自动重试（指数退避，仅对可重试错误生效）
     if not success and retry_count < max_retries and _is_retryable_error(process, stderr):
-        delay = SYNC_RETRY_BASE_DELAY * (2 ** retry_count)
-        logger.warning(f'检测到可重试错误，{delay}秒后进行第 {retry_count+1}/{max_retries} 次重试')
-        time.sleep(delay)
-        # 递归重试（参数保持不变）
-        retry_result = run_sync(
-            source, destination, delete_option, source_auth, dest_auth,
-            sync_key, task_id, trigger, checksum, dry_run,
-            include_patterns, exclude_patterns, bwlimit,
-            retry_count=retry_count + 1, max_retries=max_retries
-        )
-        retry_result['message'] = f'重试 {retry_count+1} 次后: {retry_result["message"]}'
-        return retry_result
+        # 如果同步已被手动停止，不再重试
+        with _running_sync_lock:
+            stopped = _running_sync and _running_sync.get('status') == 'stopped'
+        if stopped:
+            logger.info('同步已停止，跳过重试')
+        else:
+            delay = SYNC_RETRY_BASE_DELAY * (2 ** retry_count)
+            logger.warning(f'检测到可重试错误，{delay}秒后进行第 {retry_count+1}/{max_retries} 次重试')
+            time.sleep(delay)
+            retry_result = run_sync(
+                source, destination, delete_option, source_auth, dest_auth,
+                sync_key, task_id, trigger, checksum, dry_run,
+                include_patterns, exclude_patterns, bwlimit,
+                retry_count=retry_count + 1, max_retries=max_retries
+            )
+            retry_result['message'] = f'重试 {retry_count+1} 次后: {retry_result["message"]}'
+            return retry_result
 
     if error_count > 0:
         status_text = f'成功 {files_processed} 个文件，失败 {error_count} 个文件，耗时{elapsed_str}'
@@ -2000,6 +2005,7 @@ def stop_sync():
     with _running_sync_lock:
         if _running_sync:
             _running_sync['status'] = 'stopped'
+            _running_sync['settled_time'] = time.time()
 
     logger.info(f'同步已停止: {sync_key_val}')
     return jsonify({'success': True, 'message': '同步任务已停止'})

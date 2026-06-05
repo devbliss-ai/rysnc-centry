@@ -771,6 +771,7 @@ function switchTab(tab) {
     document.getElementById('tabTasks').classList.toggle('active', tab === 'tasks');
     document.getElementById('tabLogs').classList.toggle('active', tab === 'logs');
     document.getElementById('tabSettings').classList.toggle('active', tab === 'settings');
+    try { localStorage.setItem('activeTab', tab); } catch(e) {}
     if (tab === 'logs') loadLogs();
     if (tab === 'settings') { loadSettings(); loadHosts(); loadKeyListInSettings(); }
     if (tab === 'tasks') loadTasks();
@@ -1588,10 +1589,12 @@ function deleteKey(filename) {
     });
 }
 initTheme();
-loadTasks();
+var savedTab = 'tasks';
+try { savedTab = localStorage.getItem('activeTab') || 'tasks'; } catch(e) {}
+switchTab(savedTab);
+loadHosts();
 checkSyncStatus();
 startBackgroundPolling();
-loadHosts();
 </script>
 </body>
 </html>
