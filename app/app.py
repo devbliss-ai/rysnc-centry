@@ -358,7 +358,6 @@ def update_task_in_db(task_id, updates):
                         continue
                     v = json.dumps(v) if v else (v if k == 'schedule_json' and v is None else None)
                 elif k == 'delete_option' or k == 'checksum' or k == 'dry_run':
-                    k = k
                     v = 1 if v else 0
                 sets.append(f'{k}=?')
                 vals.append(v)
