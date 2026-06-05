@@ -15,6 +15,7 @@ import sys
 import tempfile
 import re
 import urllib.request
+from waitress import serve
 
 app = Flask(__name__)
 
@@ -31,18 +32,16 @@ logger = logging.getLogger('rsync-web')
 # 确保日志立即输出
 sys.stdout.reconfigure(line_buffering=True)
 
-# ===== 优雅退出：响应 SIGTERM/SIGINT，让容器 stop 在 3 秒内完成 =====
+# ===== 容器退出清理 =====
 _shutdown_event = threading.Event()
 
 
-def _handle_shutdown_signal(signum, frame):
-    """收到 SIGTERM/SIGINT 时触发，确保快速退出"""
+def _shutdown():
     if _shutdown_event.is_set():
-        return  # 已经在退出流程中
-    logger.info(f'收到退出信号 (signal={signum})，正在优雅关闭...')
+        return
     _shutdown_event.set()
+    logger.info('容器退出，正在清理...')
 
-    # 终止正在运行的 rsync 进程（避免等待超时）
     with _running_sync_lock:
         rsync = _running_sync
     if rsync and rsync.get('process'):
@@ -55,18 +54,16 @@ def _handle_shutdown_signal(signum, frame):
         except Exception:
             pass
 
-    # 日志归档
     try:
         _maybe_archive_logs()
     except Exception:
         pass
 
-    logger.info('优雅退出完成')
-    os._exit(0)
+    logger.info('清理完成')
 
 
-signal.signal(signal.SIGTERM, _handle_shutdown_signal)
-signal.signal(signal.SIGINT, _handle_shutdown_signal)
+import atexit
+atexit.register(_shutdown)
 
 # ===== 存储层：SQLite 替代 JSON 文件（线程安全 + 避免 os.replace 竞态） =====
 DATA_DIR = '/app/data'
@@ -2304,15 +2301,4 @@ def health_check():
 init_app()
 
 if __name__ == '__main__':
-    def _shutdown_watchdog():
-        _shutdown_event.wait()
-        time.sleep(0.3)
-        os._exit(0)
-
-    signal.signal(signal.SIGTERM, _handle_shutdown_signal)
-    signal.signal(signal.SIGINT, _handle_shutdown_signal)
-    threading.Thread(target=_shutdown_watchdog, daemon=True, name='shutdown-watchdog').start()
-    try:
-        app.run(host='0.0.0.0', port=8856, debug=False)
-    finally:
-        _shutdown_event.set()
+    serve(app, host='0.0.0.0', port=8856, threads=8)

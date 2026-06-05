@@ -45,8 +45,8 @@ echo "{\n\
   \"/data\": \"$DATA_PATH\"\n\
 }" > /app/mount_points.json\n\
 \n\
-# 启动应用\n\
-python app.py' > /app/start.sh && \
+# 启动应用 (exec 让 Python 成为 PID 1，SIGTERM 直达)\n\
+exec python app.py' > /app/start.sh && \
 chmod +x /app/start.sh
 
 CMD ["/app/start.sh"] 
