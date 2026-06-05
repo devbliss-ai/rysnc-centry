@@ -1113,9 +1113,13 @@ function batchDelete() {
         else showToast('批量删除失败: ' + d.error, 'error');
     }).catch(function() { showToast('批量删除请求失败', 'error'); });
 }
+function getDirectionIcon(dir) {
+    var map = { push: '↑', pull: '↓', both: '⇄', local: '↔' };
+    return map[dir] || '↑';
+}
 function getDirectionLabel(dir) {
-    var map = { push: '📤 推送', pull: '📥 拉取', both: '🔄 中转', local: '💻 本地' };
-    return map[dir] || '📤 推送';
+    var map = { push: '推送', pull: '拉取', both: '中转', local: '本地' };
+    return map[dir] || '推送';
 }
 function getDirectionBadge(dir) {
     var colorMap = { push: 'blue', pull: 'green', both: 'purple', local: 'gray' };
@@ -1181,7 +1185,7 @@ function renderTasks(tasks) {
             + '<div class="task-card-check"><input type="checkbox" class="task-checkbox" value="' + task.id + '" onchange="updateBatchBar()"></div>'
             + '<div class="task-card-inner">'
             + '<div class="task-header"><div class="task-paths">'
-            + '<div class="task-path"><span class="dir-icon">' + getDirectionLabel(task.direction || 'push').charAt(0) + '</span><span class="label">源</span><span class="value">' + esc(task.source) + '</span></div>'
+            + '<div class="task-path"><span class="dir-icon">' + getDirectionIcon(task.direction || 'push') + '</span><span class="label">源</span><span class="value">' + esc(task.source) + '</span></div>'
             + '<div class="task-path"><span class="label">目标</span><span class="value">' + esc(task.destination) + '</span></div>'
             + '</div></div>'
             + '<div class="task-meta">'
