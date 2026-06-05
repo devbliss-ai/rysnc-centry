@@ -2116,19 +2116,7 @@ def duplicate_task(task_id):
     new_task['id'] = new_id
     if new_task.get('schedule'):
         _register_scheduled_task(new_task)
-    return jsonify(_row_to_task({'id': new_id, 'source': new_task['source'],
-                                  'destination': new_task['destination'],
-                                  'delete_option': new_task['delete_option'],
-                                  'remark': new_task['remark'],
-                                  'source_auth': json.dumps(new_task['source_auth']),
-                                  'dest_auth': json.dumps(new_task['dest_auth']),
-                                  'schedule_json': json.dumps(new_task['schedule']) if new_task.get('schedule') else None,
-                                  'checksum': new_task['checksum'],
-                                  'dry_run': new_task['dry_run'],
-                                  'include_patterns': new_task['include_patterns'],
-                                  'exclude_patterns': new_task['exclude_patterns'],
-                                  'bwlimit': new_task['bwlimit'],
-                                  'created_at': new_task['created_at']}))
+    return jsonify({'success': True, 'id': new_id})
 
 
 @app.route('/tasks/batch', methods=['POST'])
