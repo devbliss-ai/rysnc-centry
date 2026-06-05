@@ -62,9 +62,7 @@ def _handle_shutdown_signal(signum, frame):
         pass
 
     logger.info('优雅退出完成')
-    # 强制杀掉自身（不等 Flask 内部的清理逻辑，那些可能卡住）
-    signal.signal(signum, signal.SIG_DFL)
-    os.kill(os.getpid(), signum)
+    os._exit(0)
 
 
 signal.signal(signal.SIGTERM, _handle_shutdown_signal)
@@ -2300,4 +2298,15 @@ def health_check():
 init_app()
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8856, debug=False)
+    def _shutdown_watchdog():
+        _shutdown_event.wait()
+        time.sleep(0.3)
+        os._exit(0)
+
+    signal.signal(signal.SIGTERM, _handle_shutdown_signal)
+    signal.signal(signal.SIGINT, _handle_shutdown_signal)
+    threading.Thread(target=_shutdown_watchdog, daemon=True, name='shutdown-watchdog').start()
+    try:
+        app.run(host='0.0.0.0', port=8856, debug=False)
+    finally:
+        _shutdown_event.set()
