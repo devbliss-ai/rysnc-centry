@@ -973,6 +973,8 @@ def _is_retryable_error(process, stderr):
     """判断 rsync 失败是否可重试（网络类错误）"""
     if process.returncode == 0:
         return False
+    if process.returncode < 0:
+        return False  # 被信号杀死（SIGTERM/SIGKILL），不重试
     if not stderr:
         return True  # 无 stderr 输出大概率是连接断开
     s = stderr.lower()
@@ -1978,11 +1980,13 @@ def stop_sync():
         if not process:
             return jsonify({'success': False, 'error': '无法获取进程信息'})
         sync_key_val = _running_sync.get('sync_key', '')
+        # 先标记为已停止，再杀进程（消除与 retry 逻辑的竞态）
+        _running_sync['status'] = 'stopped'
+        _running_sync['settled_time'] = time.time()
 
     logger.info(f'用户请求停止同步: {sync_key_val}')
     try:
         if os.name != 'nt':
-            # Unix: 终止整个进程组
             try:
                 os.killpg(os.getpgid(process.pid), signal.SIGTERM)
             except (ProcessLookupError, OSError):
@@ -2001,11 +2005,6 @@ def stop_sync():
                 pass
     except Exception as e:
         logger.error(f'停止同步时出错: {e}')
-
-    with _running_sync_lock:
-        if _running_sync:
-            _running_sync['status'] = 'stopped'
-            _running_sync['settled_time'] = time.time()
 
     logger.info(f'同步已停止: {sync_key_val}')
     return jsonify({'success': True, 'message': '同步任务已停止'})

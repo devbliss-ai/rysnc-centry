@@ -1047,15 +1047,24 @@ function updateSyncStatusUI(data) {
         if (panel.classList.contains('active')) { panel.classList.remove('active'); loadLogs(); }
     }
 }
+var _statusInitialCheckDone = false;
 function checkSyncStatus() {
     fetch('/sync/status').then(function(r) { return r.json(); }).then(function(d) {
-        if (d.running !== false) updateSyncStatusUI(d);
+        if (d.running !== false) {
+            if (!_statusInitialCheckDone && d.status && d.status !== 'running') {
+                _statusInitialCheckDone = true;
+                return;
+            }
+            if (d.status === 'running' && !statusPollTimer) startStatusPolling();
+            updateSyncStatusUI(d);
+        }
         else {
             if (statusPollTimer) { clearInterval(statusPollTimer); statusPollTimer = null; }
             _lastSyncData = null; _lastSyncedTaskId = null;
             var panel = document.getElementById('syncStatus');
             if (panel.classList.contains('active')) { panel.classList.remove('active'); loadLogs(); loadTasks(); }
         }
+        _statusInitialCheckDone = true;
     }).catch(function() {});
 }
 function startStatusPolling() {
@@ -1068,11 +1077,7 @@ function stopStatusPolling() {
 }
 function startBackgroundPolling() {
     if (bgPollTimer) clearInterval(bgPollTimer);
-    bgPollTimer = setInterval(function() {
-        fetch('/sync/status').then(function(r) { return r.json(); }).then(function(d) {
-            if (d.running !== false) { updateSyncStatusUI(d); startStatusPolling(); }
-        }).catch(function() {});
-    }, 30000);
+    bgPollTimer = setInterval(checkSyncStatus, 30000);
 }
 function stopRunningSync() {
     var stopBtn = document.getElementById('btnStopSync');
