@@ -14,10 +14,11 @@ from pathlib import Path, PurePosixPath
 import sys
 import tempfile
 import re
+import urllib.request
 
 app = Flask(__name__)
 
-VERSION = '1.10'
+VERSION = '1.11'
 
 # 结构化日志配置
 logging.basicConfig(
@@ -126,6 +127,21 @@ def _init_db():
                 );
                 CREATE INDEX IF NOT EXISTS idx_logs_time ON logs(time DESC);
                 CREATE INDEX IF NOT EXISTS idx_logs_task ON logs(task_id);
+                CREATE TABLE IF NOT EXISTS hosts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    host TEXT NOT NULL,
+                    port TEXT DEFAULT '22',
+                    username TEXT DEFAULT 'root',
+                    auth_type TEXT DEFAULT 'password',
+                    password TEXT DEFAULT '',
+                    key_name TEXT DEFAULT '',
+                    created_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
             ''')
         finally:
             conn.close()
@@ -204,6 +220,16 @@ def _backup_db():
 def _row_to_task(row):
     """sqlite Row → 任务 dict（保持与旧 JSON 格式一致）"""
     schedule_data = json.loads(row['schedule_json']) if row['schedule_json'] else None
+    is_remote_src = ':' in row['source'] and '@' in row['source'].split(':')[0]
+    is_remote_dst = ':' in row['destination'] and '@' in row['destination'].split(':')[0]
+    if is_remote_src and is_remote_dst:
+        direction = 'both'
+    elif is_remote_src:
+        direction = 'pull'
+    elif is_remote_dst:
+        direction = 'push'
+    else:
+        direction = 'local'
     return {
         'id': row['id'],
         'source': row['source'],
@@ -220,6 +246,8 @@ def _row_to_task(row):
         'exclude_patterns': row['exclude_patterns'] or '',
         'bwlimit': row['bwlimit'] or '',
         'created_at': row['created_at'],
+        'direction': direction,
+        'stats': _get_task_stats(row['id']),
     }
 
 
@@ -425,6 +453,109 @@ def clear_logs_all():
             conn.close()
 
 
+def list_hosts():
+    conn = _db()
+    try:
+        rows = conn.execute('SELECT * FROM hosts ORDER BY id').fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def add_host(data):
+    with _db_lock:
+        conn = _db()
+        try:
+            cur = conn.execute(
+                'INSERT INTO hosts (name,host,port,username,auth_type,password,key_name,created_at) '
+                'VALUES (?,?,?,?,?,?,?,?)',
+                (data.get('name', ''), data.get('host', ''), str(data.get('port', '22')),
+                 data.get('username', 'root'), data.get('auth_type', 'password'),
+                 data.get('password', ''), data.get('key_name', ''),
+                 datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            return cur.lastrowid
+        finally:
+            conn.close()
+
+
+def update_host(host_id, data):
+    with _db_lock:
+        conn = _db()
+        try:
+            sets = []
+            vals = []
+            for k in ('name', 'host', 'port', 'username', 'auth_type', 'password', 'key_name'):
+                if k in data:
+                    sets.append(f'{k}=?')
+                    vals.append(str(data[k]) if k == 'port' else data[k])
+            if sets:
+                vals.append(host_id)
+                conn.execute(f'UPDATE hosts SET {",".join(sets)} WHERE id=?', vals)
+        finally:
+            conn.close()
+
+
+def delete_host(host_id):
+    with _db_lock:
+        conn = _db()
+        try:
+            conn.execute('DELETE FROM hosts WHERE id=?', (host_id,))
+        finally:
+            conn.close()
+
+
+def get_setting(key, default=''):
+    conn = _db()
+    try:
+        row = conn.execute('SELECT value FROM settings WHERE key=?', (key,)).fetchone()
+        return row['value'] if row else default
+    finally:
+        conn.close()
+
+
+def set_setting(key, value):
+    with _db_lock:
+        conn = _db()
+        try:
+            conn.execute('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)', (key, value))
+        finally:
+            conn.close()
+
+
+def send_webhook_notification(task_name, source, dest, success, message, files_count, error_count, duration):
+    webhook_url = get_setting('webhook_url')
+    if not webhook_url:
+        return
+    content = f"""## Rsync 同步通知
+> 任务: {task_name}
+> 源: {source}
+> 目标: {dest}
+> 状态: {'✅ 成功' if success else '❌ 失败'}
+> 文件: {files_count} 个
+> 耗时: {duration}
+{f'> 错误: {error_count} 个' if error_count else ''}
+{f'> 详情: {message}' if not success else ''}"""
+    payload = json.dumps({"msgtype": "markdown", "markdown": {"content": content}}).encode('utf-8')
+    req = urllib.request.Request(webhook_url, data=payload, headers={'Content-Type': 'application/json'})
+    try:
+        urllib.request.urlopen(req, timeout=10)
+    except Exception as e:
+        logger.error(f'Webhook通知发送失败: {e}')
+
+
+def _get_task_stats(task_id):
+    conn = _db()
+    try:
+        total = conn.execute('SELECT COUNT(*) FROM logs WHERE task_id=?', (task_id,)).fetchone()[0]
+        success_count = conn.execute('SELECT COUNT(*) FROM logs WHERE task_id=? AND success=1', (task_id,)).fetchone()[0]
+        fail_count = total - success_count
+        rows = conn.execute('SELECT success FROM logs WHERE task_id=? ORDER BY id DESC LIMIT 5', (task_id,)).fetchall()
+        last_5 = [bool(r['success']) for r in rows]
+        return {'total': total, 'success': success_count, 'fail': fail_count, 'last_5': last_5}
+    finally:
+        conn.close()
+
+
 def _next_task_id():
     """生成新任务 ID（基于当前最大 id + 1）"""
     conn = _db()
@@ -568,6 +699,7 @@ def _make_sync_func(task):
     task_id = task.get('id')
     task_source = task.get('source', '')
     task_dest = task.get('destination', '')
+    task_remark = task.get('remark', '') or f'Task #{task_id}'
 
     def do_sync():
         logger.info(f'[定时] do_sync 被调用: task_id={task_id} source={task_source} -> {task_dest}')
@@ -616,6 +748,9 @@ def _make_sync_func(task):
                     'trigger': 'schedule'
                 })
                 _finalize_sync_status(f'task_{task_id}', result['success'])
+                send_webhook_notification(task_remark, task_source, task_dest, result['success'],
+                                          result['message'], result.get('files_synced', 0),
+                                          result.get('error_count', 0), f'{duration:.1f}s')
                 logger.info(f'[定时] worker 完成: task_id={task_id} success={result["success"]}')
             except Exception as e:
                 logger.error(f'定时同步异常 (task_id={task_id}): {e}', exc_info=True)
@@ -633,6 +768,8 @@ def _make_sync_func(task):
                     'trigger': 'schedule'
                 })
                 _finalize_sync_status(f'task_{task_id}', False)
+                send_webhook_notification(task_remark, task_source, task_dest, False,
+                                          f'定时同步异常: {e}', 0, 1, '0s')
             finally:
                 _sync_execution_lock.release()
                 logger.info(f'[定时] worker 退出: task_id={task_id}')
@@ -1533,6 +1670,10 @@ def execute_sync(task_id):
             'trigger': 'manual'
         })
         _finalize_sync_status(f'task_{task_id}', result['success'])
+        send_webhook_notification(task.get('remark', '') or f'Task #{task_id}',
+                                  task['source'], task['destination'], result['success'],
+                                  result['message'], result.get('files_synced', 0),
+                                  result.get('error_count', 0), f'{duration:.1f}s')
 
         return jsonify(result)
     finally:
@@ -1863,6 +2004,232 @@ def stop_sync():
 
     logger.info(f'同步已停止: {sync_key_val}')
     return jsonify({'success': True, 'message': '同步任务已停止'})
+
+
+@app.route('/hosts', methods=['GET'])
+def route_list_hosts():
+    return jsonify(list_hosts())
+
+
+@app.route('/hosts', methods=['POST'])
+def route_add_host():
+    data = request.get_json()
+    if not data or not data.get('name') or not data.get('host'):
+        return jsonify({'error': '名称和主机地址为必填项'}), 400
+    new_id = add_host(data)
+    return jsonify({'success': True, 'id': new_id})
+
+
+@app.route('/hosts/<int:host_id>', methods=['PUT'])
+def route_update_host(host_id):
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': '无效的请求数据'}), 400
+    update_host(host_id, data)
+    return jsonify({'success': True})
+
+
+@app.route('/hosts/<int:host_id>', methods=['DELETE'])
+def route_delete_host(host_id):
+    delete_host(host_id)
+    return jsonify({'success': True})
+
+
+@app.route('/settings', methods=['GET'])
+def route_get_settings():
+    conn = _db()
+    try:
+        rows = conn.execute('SELECT key, value FROM settings').fetchall()
+        return jsonify({r['key']: r['value'] for r in rows})
+    finally:
+        conn.close()
+
+
+@app.route('/settings', methods=['POST'])
+def route_set_settings():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': '无效的请求数据'}), 400
+    for key, value in data.items():
+        set_setting(key, str(value))
+    return jsonify({'success': True})
+
+
+@app.route('/tasks/<int:task_id>/duplicate', methods=['POST'])
+def duplicate_task(task_id):
+    tasks = load_tasks()
+    task = next((t for t in tasks if t['id'] == task_id), None)
+    if not task:
+        return jsonify({'error': '任务不存在'}), 404
+    new_task = {
+        'source': task['source'],
+        'destination': task['destination'],
+        'delete_option': task['delete_option'],
+        'remark': task['remark'],
+        'source_auth': task['source_auth'],
+        'dest_auth': task['dest_auth'],
+        'schedule': task['schedule'],
+        'checksum': task['checksum'],
+        'dry_run': task['dry_run'],
+        'include_patterns': task['include_patterns'],
+        'exclude_patterns': task['exclude_patterns'],
+        'bwlimit': task['bwlimit'],
+        'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    }
+    new_id = add_task_to_db(new_task)
+    new_task['id'] = new_id
+    if new_task.get('schedule'):
+        _register_scheduled_task(new_task)
+    return jsonify(_row_to_task({'id': new_id, 'source': new_task['source'],
+                                  'destination': new_task['destination'],
+                                  'delete_option': new_task['delete_option'],
+                                  'remark': new_task['remark'],
+                                  'source_auth': json.dumps(new_task['source_auth']),
+                                  'dest_auth': json.dumps(new_task['dest_auth']),
+                                  'schedule_json': json.dumps(new_task['schedule']) if new_task.get('schedule') else None,
+                                  'checksum': new_task['checksum'],
+                                  'dry_run': new_task['dry_run'],
+                                  'include_patterns': new_task['include_patterns'],
+                                  'exclude_patterns': new_task['exclude_patterns'],
+                                  'bwlimit': new_task['bwlimit'],
+                                  'created_at': new_task['created_at']}))
+
+
+@app.route('/tasks/batch', methods=['POST'])
+def batch_operations():
+    data = request.get_json()
+    if not data or 'action' not in data or 'task_ids' not in data:
+        return jsonify({'error': '缺少 action 或 task_ids 参数'}), 400
+    action = data['action']
+    task_ids = data['task_ids']
+    if not isinstance(task_ids, list):
+        return jsonify({'error': 'task_ids 必须是数组'}), 400
+    results = []
+    tasks = load_tasks()
+    if action == 'sync':
+        for tid in task_ids:
+            task = next((t for t in tasks if t['id'] == tid), None)
+            if not task:
+                results.append({'task_id': tid, 'success': False, 'error': '任务不存在'})
+                continue
+            if not _sync_execution_lock.acquire(blocking=False):
+                results.append({'task_id': tid, 'success': False, 'error': '同步锁忙碌，已跳过'})
+                continue
+            try:
+                sync_start = time.time()
+                result = run_sync(task['source'], task['destination'], task.get('delete_option', True),
+                                  task.get('source_auth', {}), task.get('dest_auth', {}),
+                                  sync_key=f'task_{tid}', task_id=tid, trigger='manual',
+                                  checksum=task.get('checksum', False),
+                                  dry_run=task.get('dry_run', False),
+                                  include_patterns=[p for p in (task.get('include_patterns') or '').split('\n') if p.strip()],
+                                  exclude_patterns=[p for p in (task.get('exclude_patterns') or '').split('\n') if p.strip()],
+                                  bwlimit=task.get('bwlimit', ''))
+                duration = time.time() - sync_start
+                _record_metric(result, 'manual', duration)
+                save_log_entry({
+                    'task_id': task['id'],
+                    'source': task['source'],
+                    'destination': task['destination'],
+                    'success': result['success'],
+                    'message': result['message'],
+                    'output': result['output'][:2000],
+                    'files_synced': result.get('files_synced', 0),
+                    'error_count': result.get('error_count', 0),
+                    'time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    'trigger': 'manual'
+                })
+                _finalize_sync_status(f'task_{tid}', result['success'])
+                send_webhook_notification(task.get('remark', '') or f'Task #{tid}',
+                                          task['source'], task['destination'], result['success'],
+                                          result['message'], result.get('files_synced', 0),
+                                          result.get('error_count', 0), f'{duration:.1f}s')
+                results.append({'task_id': tid, 'success': result['success'], 'message': result['message']})
+            except Exception as e:
+                results.append({'task_id': tid, 'success': False, 'error': str(e)})
+            finally:
+                _sync_execution_lock.release()
+    elif action == 'delete':
+        for tid in task_ids:
+            task = next((t for t in tasks if t['id'] == tid), None)
+            if not task:
+                results.append({'task_id': tid, 'success': False, 'error': '任务不存在'})
+                continue
+            delete_task_from_db(tid)
+            _unregister_scheduled_task(tid)
+            results.append({'task_id': tid, 'success': True})
+    else:
+        return jsonify({'error': f'不支持的操作: {action}'}), 400
+    return jsonify({'success': True, 'results': results})
+
+
+@app.route('/tasks/check-conflicts', methods=['POST'])
+def check_conflicts():
+    data = request.get_json()
+    if not data or 'source' not in data or 'destination' not in data:
+        return jsonify({'error': '缺少 source 或 destination 参数'}), 400
+    src = data['source']
+    dst = data['destination']
+    tasks = load_tasks()
+    conflicts = []
+    for t in tasks:
+        if t['source'] == src or t['destination'] == dst:
+            conflicts.append({'id': t['id'], 'source': t['source'], 'destination': t['destination'], 'remark': t['remark']})
+    return jsonify({'conflicts': conflicts})
+
+
+@app.route('/tasks/<int:task_id>/preview', methods=['POST'])
+def preview_command(task_id):
+    tasks = load_tasks()
+    task = next((t for t in tasks if t['id'] == task_id), None)
+    if not task:
+        return jsonify({'error': '任务不存在'}), 404
+    source = task['source']
+    destination = task['destination']
+    delete_option = task.get('delete_option', True)
+    checksum = task.get('checksum', False)
+    dry_run = task.get('dry_run', False)
+    bwlimit = task.get('bwlimit', '')
+    include_patterns = [p for p in (task.get('include_patterns') or '').split('\n') if p.strip()]
+    exclude_patterns = [p for p in (task.get('exclude_patterns') or '').split('\n') if p.strip()]
+    source_auth = task.get('source_auth', {})
+    dest_auth = task.get('dest_auth', {})
+    is_remote_source = ':' in source and '@' in source.split(':')[0]
+    is_remote_dest = ':' in destination and '@' in destination.split(':')[0]
+    if not is_remote_source:
+        if not source.endswith('/'):
+            source += '/'
+    cmd = ['rsync', '-av', '--partial', '--ignore-errors',
+           '--partial-dir=.rsync-partial',
+           f'--timeout={RSYNC_IDLE_TIMEOUT}']
+    if delete_option:
+        cmd.append('--delete')
+    if checksum:
+        cmd.append('--checksum')
+    if dry_run:
+        cmd.append('--list-only')
+    if bwlimit:
+        cmd.append(f'--bwlimit={bwlimit}')
+    for pat in include_patterns:
+        pat = pat.strip()
+        if pat:
+            cmd.extend(['--include', pat])
+    for pat in exclude_patterns:
+        pat = pat.strip()
+        if pat:
+            cmd.extend(['--exclude', pat])
+    ssh_cmd, env, extra_env, _cleanup_file = _build_ssh_cmd_options(
+        source, destination, source_auth, dest_auth, is_remote_source, is_remote_dest)
+    if is_remote_source or is_remote_dest:
+        cmd.extend(['-e', ssh_cmd])
+        env.update(extra_env)
+    cmd.extend([source, destination])
+    if _cleanup_file and os.path.exists(_cleanup_file):
+        try:
+            os.remove(_cleanup_file)
+        except OSError:
+            pass
+    return jsonify({'command': ' '.join(cmd)})
 
 
 # 在启动时清除所有现有的定时任务并重新加载

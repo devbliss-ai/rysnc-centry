@@ -22,9 +22,7 @@
 1. 克隆项目到本地：
 
   ```
-  git clone https://github.com/Rontalks/rsync-web.git
-  cd rsync-web-ui
-  ```
+  git clone https://github.com/Rontalks/rsync-centry.git
 
   
 
@@ -32,7 +30,6 @@
 
   ```
   volumes:
-  "/your/source/path:/home:ro" # 源路径，只读模式
   "/your/target/path:/data" # 目标路径，读写模式
   ```
 
