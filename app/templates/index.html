@@ -224,6 +224,9 @@ select {
     display: none; margin-top: 12px; padding: 12px; background: var(--bg);
     border-radius: var(--radius-sm); border: 1px solid var(--border);
 }
+.edit-panel input[type="text"], .edit-panel textarea {
+    width: 100%; box-sizing: border-box;
+}
 .empty-state { text-align: center; padding: 36px 20px; color: var(--text-muted); }
 .empty-state svg { width: 48px; height: 48px; margin-bottom: 10px; opacity: 0.4; }
 .empty-state p { font-size: 0.88em; }
@@ -1345,6 +1348,16 @@ function showEditPanel(taskId) {
         + '<div id="es_monthly_' + taskId + '" class="schedule-options' + (s && s.type === 'monthly' ? ' active' : '') + '">'
         + '<input type="number" id="es_md_' + taskId + '" min="1" max="31" placeholder="日期" style="width:55px" value="' + (s && s.day ? s.day : '') + '">'
         + '<input type="time" id="es_mt_' + taskId + '" style="width:auto" value="' + (s && s.time ? s.time : '') + '"></div></div>'
+        + '<div style="font-weight:600;font-size:0.82em;margin:8px 0 4px;color:var(--text-secondary)">⚙ 同步选项</div>'
+        + '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px">'
+        + '<label class="checkbox-wrap" style="font-size:0.78em"><input type="checkbox" id="ee_delete_' + taskId + '"' + (task.delete_option ? ' checked' : '') + '><span>--delete</span></label>'
+        + '<label class="checkbox-wrap" style="font-size:0.78em"><input type="checkbox" id="ee_checksum_' + taskId + '"' + (task.checksum ? ' checked' : '') + '><span>checksum</span></label>'
+        + '<label class="checkbox-wrap" style="font-size:0.78em"><input type="checkbox" id="ee_dryrun_' + taskId + '"' + (task.dry_run ? ' checked' : '') + '><span>试运行</span></label>'
+        + '</div>'
+        + '<input type="text" id="ee_bwlimit_' + taskId + '" placeholder="限速（如 10M）" style="font-size:0.78em;margin-bottom:4px" value="' + esc(task.bwlimit || '') + '">'
+        + '<textarea id="ee_include_' + taskId + '" rows="2" placeholder="包含规则（每行一条）" style="font-size:0.78em;margin-bottom:4px">' + esc(task.include_patterns || '') + '</textarea>'
+        + '<textarea id="ee_exclude_' + taskId + '" rows="2" placeholder="排除规则（每行一条）" style="font-size:0.78em;margin-bottom:4px">' + esc(task.exclude_patterns || '') + '</textarea>'
+        + '<textarea id="ee_remark_' + taskId + '" rows="1" placeholder="备注" style="font-size:0.78em;margin-bottom:4px">' + esc(task.remark || '') + '</textarea>'
         + '<div style="display:flex;gap:6px;margin-top:8px">'
         + '<button class="btn btn-primary btn-xs" onclick="saveEdit(' + taskId + ')">保存</button>'
         + '<button class="btn btn-outline btn-xs" onclick="cancelEdit(' + taskId + ')">取消</button></div>';
@@ -1367,7 +1380,16 @@ function getEditSchedule(taskId) {
 }
 function saveEdit(taskId) {
     var schedule = getEditSchedule(taskId);
-    var body = { schedule: schedule };
+    var body = {
+        schedule: schedule,
+        delete_option: document.getElementById('ee_delete_' + taskId).checked,
+        checksum: document.getElementById('ee_checksum_' + taskId).checked,
+        dry_run: document.getElementById('ee_dryrun_' + taskId).checked,
+        bwlimit: document.getElementById('ee_bwlimit_' + taskId).value.trim(),
+        include_patterns: document.getElementById('ee_include_' + taskId).value,
+        exclude_patterns: document.getElementById('ee_exclude_' + taskId).value,
+        remark: document.getElementById('ee_remark_' + taskId).value
+    };
     fetch('/tasks/' + taskId, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     .then(function(r) { return r.json(); }).then(function(d) {
         if (d.success) { showToast('设置已保存', 'success'); loadTasks(); }
