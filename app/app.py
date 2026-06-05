@@ -19,7 +19,7 @@ from waitress import serve
 
 app = Flask(__name__)
 
-VERSION = '1.15'
+VERSION = '1.16'
 
 # 结构化日志配置
 logging.basicConfig(
