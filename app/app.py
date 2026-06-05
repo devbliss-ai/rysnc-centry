@@ -34,11 +34,14 @@ sys.stdout.reconfigure(line_buffering=True)
 
 # ===== 容器退出清理 =====
 _shutdown_event = threading.Event()
+_shutdown_cleanup_done = False
 
 
 def _shutdown():
-    if _shutdown_event.is_set():
+    global _shutdown_cleanup_done
+    if _shutdown_cleanup_done:
         return
+    _shutdown_cleanup_done = True
     _shutdown_event.set()
     logger.info('容器退出，正在清理...')
 
@@ -50,6 +53,7 @@ def _shutdown():
             if os.name != 'nt' and hasattr(proc, 'pid') and proc.pid:
                 os.killpg(proc.pid, signal.SIGTERM)
             proc.terminate()
+            proc.wait(timeout=3)
             logger.info('已终止运行中的 rsync 进程')
         except Exception:
             pass
@@ -60,10 +64,6 @@ def _shutdown():
         pass
 
     logger.info('清理完成')
-
-
-import atexit
-atexit.register(_shutdown)
 
 # ===== 存储层：SQLite 替代 JSON 文件（线程安全 + 避免 os.replace 竞态） =====
 DATA_DIR = '/app/data'
@@ -2273,7 +2273,15 @@ def init_app():
     """应用启动：初始化 SQLite、迁移旧数据、恢复定时任务、首次备份"""
     _init_db()
     _migrate_from_json()
-    _backup_db()  # 启动时备份一次（用户可手动重启用）
+    _backup_db()
+
+    try:
+        home_path = os.path.realpath('/home')
+        data_path = os.path.realpath('/data')
+        with open('/app/mount_points.json', 'w') as f:
+            json.dump({'/home': home_path, '/data': data_path}, f)
+    except Exception:
+        pass
 
     with _scheduled_tasks_lock:
         _scheduled_tasks.clear()
@@ -2301,4 +2309,13 @@ def health_check():
 init_app()
 
 if __name__ == '__main__':
+    import atexit
+    atexit.register(_shutdown)
+
+    def _on_sigterm(signum, frame):
+        _shutdown()
+        os._exit(0)
+
+    signal.signal(signal.SIGTERM, _on_sigterm)
+    signal.signal(signal.SIGINT, _on_sigterm)
     serve(app, host='0.0.0.0', port=8856, threads=8)
