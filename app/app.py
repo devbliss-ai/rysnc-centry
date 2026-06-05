@@ -136,6 +136,7 @@ def _init_db():
                     auth_type TEXT DEFAULT 'password',
                     password TEXT DEFAULT '',
                     key_name TEXT DEFAULT '',
+                    mode TEXT DEFAULT 'rw',
                     created_at TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS settings (
@@ -143,6 +144,9 @@ def _init_db():
                     value TEXT NOT NULL
                 );
             ''')
+            conn.execute("ALTER TABLE hosts ADD COLUMN mode TEXT DEFAULT 'rw'")
+        except sqlite3.OperationalError:
+            pass
         finally:
             conn.close()
 
@@ -466,11 +470,12 @@ def add_host(data):
         conn = _db()
         try:
             cur = conn.execute(
-                'INSERT INTO hosts (name,host,port,username,auth_type,password,key_name,created_at) '
-                'VALUES (?,?,?,?,?,?,?,?)',
+                'INSERT INTO hosts (name,host,port,username,auth_type,password,key_name,mode,created_at) '
+                'VALUES (?,?,?,?,?,?,?,?,?)',
                 (data.get('name', ''), data.get('host', ''), str(data.get('port', '22')),
                  data.get('username', 'root'), data.get('auth_type', 'password'),
                  data.get('password', ''), data.get('key_name', ''),
+                 str(data.get('mode', 'rw')),
                  datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
             return cur.lastrowid
         finally:
@@ -483,7 +488,7 @@ def update_host(host_id, data):
         try:
             sets = []
             vals = []
-            for k in ('name', 'host', 'port', 'username', 'auth_type', 'password', 'key_name'):
+            for k in ('name', 'host', 'port', 'username', 'auth_type', 'password', 'key_name', 'mode'):
                 if k in data:
                     sets.append(f'{k}=?')
                     vals.append(str(data[k]) if k == 'port' else data[k])
@@ -2032,6 +2037,37 @@ def route_update_host(host_id):
 def route_delete_host(host_id):
     delete_host(host_id)
     return jsonify({'success': True})
+
+
+@app.route('/hosts/<int:host_id>/test', methods=['POST'])
+def test_host_connection(host_id):
+    hosts = list_hosts()
+    host = next((h for h in hosts if h['id'] == host_id), None)
+    if not host:
+        return jsonify({'error': '主机不存在'}), 404
+    auth_type, password, key_path = _get_auth_info(host)
+    port = str(host.get('port', '22')).strip() or '22'
+    username = host.get('username', 'root')
+    hostname = host.get('host', '')
+    timeout = 8
+    ssh_opts = '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -o BatchMode=yes'
+    try:
+        if auth_type == 'key' and key_path:
+            cmd = ['ssh', '-p', port, '-i', key_path] + ssh_opts.split() + [f'{username}@{hostname}', 'echo ok']
+        else:
+            cmd = ['sshpass', '-e', 'ssh', '-p', port] + ssh_opts.split() + [f'{username}@{hostname}', 'echo ok']
+        env = os.environ.copy()
+        if auth_type == 'password' and password:
+            env['SSHPASS'] = password
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
+        if proc.returncode == 0:
+            return jsonify({'success': True, 'message': '连接成功', 'output': proc.stdout.strip()})
+        else:
+            return jsonify({'success': False, 'message': '连接失败', 'output': proc.stderr.strip()[:500]})
+    except subprocess.TimeoutExpired:
+        return jsonify({'success': False, 'message': '连接超时', 'output': f'连接超过 {timeout} 秒未响应'})
+    except FileNotFoundError:
+        return jsonify({'success': False, 'message': 'rsync-web 容器内未安装 ssh/sshpass', 'output': ''})
 
 
 @app.route('/settings', methods=['GET'])

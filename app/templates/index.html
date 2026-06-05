@@ -136,6 +136,8 @@ select {
 .btn-danger:hover { background: var(--danger-hover); }
 .btn-warning { background: var(--warning); color: #1e293b; }
 .btn-warning:hover { background: var(--warning-hover); }
+.btn-info { background: #6366f1; color: #fff; }
+.btn-info:hover { background: #4f46e5; }
 .btn-outline { background: var(--card); color: var(--primary); border: 1.5px solid var(--primary); padding: 8px 14px; }
 .btn-outline:hover { background: var(--primary-light); }
 .btn-sm { padding: 5px 10px; font-size: 0.78em; }
@@ -653,6 +655,15 @@ select {
                         </div>
                         <div id="host_auth_key_field" style="display:none;margin-bottom:8px">
                             <select id="host_key_name"><option value="">选择密钥...</option></select>
+                        </div>
+                        <div style="margin-bottom:8px;display:flex;align-items:center;gap:8px">
+                            <span style="font-size:0.8em;color:var(--text-secondary)">模式:</span>
+                            <label style="font-size:0.82em;display:flex;align-items:center;gap:3px;cursor:pointer">
+                                <input type="radio" name="host_mode" value="rw" checked> 可读写
+                            </label>
+                            <label style="font-size:0.82em;display:flex;align-items:center;gap:3px;cursor:pointer">
+                                <input type="radio" name="host_mode" value="ro"> 只读
+                            </label>
                         </div>
                         <div style="display:flex;gap:6px">
                             <button class="btn btn-success btn-xs" onclick="saveHost()">保存主机</button>
@@ -1420,7 +1431,8 @@ function renderHostsInSettings(hosts) {
     var el = document.getElementById('hostList');
     if (!hosts.length) { el.innerHTML = '<div class="empty-state" style="padding:16px"><p>暂无主机配置</p></div>'; return; }
     el.innerHTML = hosts.map(function(h) {
-        return '<div class="host-card"><div class="host-info"><div class="host-name">' + esc(h.name) + '</div><div class="host-detail">' + esc(h.username) + '@' + esc(h.host) + ':' + esc(h.port) + ' (' + (h.auth_type === 'key' ? '密钥' : '密码') + ')</div></div><div class="host-actions"><button class="btn btn-outline btn-xs" onclick="editHost(' + h.id + ')">编辑</button><button class="btn btn-danger btn-xs" onclick="deleteHost(' + h.id + ')">删除</button></div></div>';
+        var modeBadge = h.mode === 'ro' ? '<span class="badge badge-amber" style="font-size:0.7em">只读</span>' : '<span class="badge badge-green" style="font-size:0.7em">可读写</span>';
+        return '<div class="host-card"><div class="host-info"><div class="host-name">' + esc(h.name) + ' ' + modeBadge + '</div><div class="host-detail">' + esc(h.username) + '@' + esc(h.host) + ':' + esc(h.port) + ' (' + (h.auth_type === 'key' ? '密钥' : '密码') + ')</div></div><div class="host-actions"><button class="btn btn-info btn-xs" onclick="testHost(' + h.id + ', this)">测试</button><button class="btn btn-outline btn-xs" onclick="editHost(' + h.id + ')">编辑</button><button class="btn btn-danger btn-xs" onclick="deleteHost(' + h.id + ')">删除</button></div></div>';
     }).join('');
 }
 function renderHostSelects(hosts) {
@@ -1456,7 +1468,7 @@ function onDestHostSelect() {
 }
 function toggleHostForm() {
     var form = document.getElementById('hostForm');
-    if (form.style.display === 'none' || !form.style.display) { form.style.display = ''; document.getElementById('host_edit_id').value = ''; document.getElementById('host_name').value = ''; document.getElementById('host_host').value = ''; document.getElementById('host_port').value = '22'; document.getElementById('host_username').value = 'root'; document.getElementById('host_password').value = ''; document.getElementById('host_auth_type').value = 'password'; toggleHostAuthFields(); loadHostKeysForForm(); }
+    if (form.style.display === 'none' || !form.style.display) { form.style.display = ''; document.getElementById('host_edit_id').value = ''; document.getElementById('host_name').value = ''; document.getElementById('host_host').value = ''; document.getElementById('host_port').value = '22'; document.getElementById('host_username').value = 'root'; document.getElementById('host_password').value = ''; document.getElementById('host_auth_type').value = 'password'; document.querySelector('input[name="host_mode"][value="rw"]').checked = true; toggleHostAuthFields(); loadHostKeysForForm(); }
     else form.style.display = 'none';
 }
 function cancelHostForm() { document.getElementById('hostForm').style.display = 'none'; }
@@ -1473,6 +1485,7 @@ function loadHostKeysForForm() {
 }
 function saveHost() {
     var editId = document.getElementById('host_edit_id').value;
+    var mode = document.querySelector('input[name="host_mode"]:checked');
     var data = {
         name: document.getElementById('host_name').value,
         host: document.getElementById('host_host').value,
@@ -1480,7 +1493,8 @@ function saveHost() {
         username: document.getElementById('host_username').value || 'root',
         auth_type: document.getElementById('host_auth_type').value,
         password: document.getElementById('host_password').value,
-        key_name: document.getElementById('host_key_name').value
+        key_name: document.getElementById('host_key_name').value,
+        mode: mode ? mode.value : 'rw'
     };
     if (!data.name || !data.host) { showToast('请填写名称和主机IP', 'error'); return; }
     var method = editId ? 'PUT' : 'POST';
@@ -1501,6 +1515,8 @@ function editHost(id) {
     document.getElementById('host_username').value = h.username || 'root';
     document.getElementById('host_auth_type').value = h.auth_type || 'password';
     document.getElementById('host_password').value = h.password || '';
+    var radios = document.getElementsByName('host_mode');
+    for (var i = 0; i < radios.length; i++) { radios[i].checked = radios[i].value === (h.mode || 'rw'); }
     toggleHostAuthFields();
     document.getElementById('hostForm').style.display = '';
     setTimeout(function() { document.getElementById('host_key_name').value = h.key_name || ''; }, 300);
@@ -1511,6 +1527,16 @@ function deleteHost(id) {
         if (d.success) { showToast('主机已删除', 'success'); loadHosts(); }
         else showToast('删除失败: ' + d.error, 'error');
     });
+}
+function testHost(id, btn) {
+    var orig = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner"></span> 测试中';
+    btn.disabled = true;
+    fetch('/hosts/' + id + '/test', { method: 'POST' }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.success) showToast('连接成功: ' + (d.output || d.message), 'success');
+        else showToast('连接失败: ' + (d.output || d.message), 'error');
+    }).catch(function() { showToast('测试请求失败', 'error'); })
+    .finally(function() { btn.innerHTML = orig; btn.disabled = false; });
 }
 function loadKeyListInSettings() {
     fetch('/keys').then(function(r) { return r.json(); }).then(function(keys) {
