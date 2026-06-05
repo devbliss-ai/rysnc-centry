@@ -2043,17 +2043,23 @@ def test_host_connection(host_id):
     host = next((h for h in hosts if h['id'] == host_id), None)
     if not host:
         return jsonify({'error': '主机不存在'}), 404
-    auth_type, password, key_path = _get_auth_info(host)
     port = str(host.get('port', '22')).strip() or '22'
     username = host.get('username', 'root')
     hostname = host.get('host', '')
+    auth_type = host.get('auth_type', 'password')
+    password = host.get('password', '')
+    key_name = host.get('key_name', '')
+    key_path = _get_key_path(key_name) if auth_type == 'key' and key_name else ''
     timeout = 8
-    ssh_opts = '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -o BatchMode=yes'
+    base_opts = ['-o', 'StrictHostKeyChecking=no', '-o', 'UserKnownHostsFile=/dev/null',
+                 '-o', 'ConnectTimeout=5']
     try:
         if auth_type == 'key' and key_path:
-            cmd = ['ssh', '-p', port, '-i', key_path] + ssh_opts.split() + [f'{username}@{hostname}', 'echo ok']
+            cmd = ['ssh', '-p', port, '-i', key_path] + base_opts + ['-o', 'BatchMode=yes',
+                  f'{username}@{hostname}', 'echo ok']
         else:
-            cmd = ['sshpass', '-e', 'ssh', '-p', port] + ssh_opts.split() + [f'{username}@{hostname}', 'echo ok']
+            cmd = ['sshpass', '-e', 'ssh', '-p', port] + base_opts + ['-o', 'PreferredAuthentications=password',
+                  '-o', 'PubkeyAuthentication=no', f'{username}@{hostname}', 'echo ok']
         env = os.environ.copy()
         if auth_type == 'password' and password:
             env['SSHPASS'] = password
