@@ -1,120 +1,115 @@
-# Rsync Web UI
+# Rsync 同步中心
 
-一个基于Web界面的Rsync同步工具，支持定时同步任务和文件浏览器功能。
+轻量级 Web 管理界面，用于配置和管理 rsync 同步任务。支持本地、远程以及跨远程服务器之间的文件同步，提供定时调度、主机配置管理、微信通知等企业级功能。
 
 ## 功能特点
 
-- 📂 可视化的文件浏览器，轻松选择源路径和目标路径
-- ⏰ 灵活的定时任务设置
-  - 每天定时执行
-  - 每周定时执行
-  - 每月定时执行
-  - 自定义时间间隔执行
-- 🔄 支持即时同步操作
-- 🗑️ 可选的`--delete`选项，保持目标目录与源目录完全一致
-- 📝 支持为同步任务添加备注说明
-- 📱 响应式设计，支持移动端访问
+**同步管理**
+- 支持本地 ↔ 本地、本地 ↔ 远程、远程 ↔ 远程（纯 rsync + SSH，无需 FUSE）
+- 密码认证 / SSH 密钥认证，支持自定义端口
+- 远程服务器文件浏览器
+- `--delete`、`--checksum`、`--dry-run`、限速、包含/排除规则等完整 rsync 选项
+- 实时进度条：文件数、百分比、传输速度、已用时间
+- 同步日志与历史记录
+
+**定时调度**
+- 每天 / 每周 / 每月定时执行
+- 自定义间隔（分钟 / 小时）
+- 任务卡片显示下次执行时间
+- 支持手动即时触发
+
+**主机配置管理**
+- 保存远程主机连接信息（地址、端口、用户名、认证方式）
+- 创建任务时从已保存的主机配置一键选择
+- 修改主机密码/端口后所有关联任务自动生效
+
+**SSH 密钥管理**
+- 上传、删除 SSH 私钥文件
+
+**批量操作**
+- 勾选多个任务 → 一键同步 / 一键删除
+- 全选 / 取消全选
+
+**Webhook 通知**
+- 同步完成后推送到企业微信群机器人
+
+**其它**
+- 暗色 / 浅色 / 跟随系统 三档主题
+- 桌面端两栏布局，移动端自适应
+- Prometheus 指标接口（`/metrics`）
+- 健康检查接口（`/health`）
+- 容器优雅退出（秒级响应 SIGTERM）
 
 ## 快速开始
 
-### 使用 Docker Compose 部署
+### Docker Compose 部署
 
-1. 克隆项目到本地：
+```bash
+git clone https://github.com/devbliss-ai/rysnc-centry.git
+cd rysnc-centry
+```
 
-  ```
-  git clone https://github.com/Rontalks/rsync-centry.git
+编辑 `docker-compose.yml`，按需修改挂载路径和端口：
 
-  
+```yaml
+volumes:
+  - /your/source/path:/home:ro    # 源路径，建议只读
+  - /your/target/path:/data       # 目标路径，读写
+ports:
+  - "8856:8856"
+```
 
-2. 修改 `docker-compose.yml` 中的挂载路径：
+启动：
 
-  ```
-  volumes:
-  "/your/target/path:/data" # 目标路径，读写模式
-  ```
+```bash
+docker-compose up -d
+```
 
-  
-
-3. 启动服务：
-
-  ```
-  docker-compose up -d
-  ```
-
-  
-
-4. 访问 Web 界面：
-
-打开浏览器访问 `http://your-server-ip:8856`
+访问 `http://your-server-ip:8856`
 
 ## 配置说明
 
 ### 挂载路径
 
-- `/home`: 源文件路径，建议以只读方式挂载
-- `/data`: 目标文件路径，需要读写权限
+| 路径 | 用途 | 建议 |
+|------|------|------|
+| `/home` | 默认源文件路径 | 只读挂载 |
+| `/data` | 默认目标文件路径 | 读写挂载 |
 
 ### 环境变量
 
-- `TZ`: 时区设置，默认为 `Asia/Shanghai`
-- `LANG`/`LANGUAGE`/`LC_ALL`: 语言设置，默认为中文
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `TZ` | 时区 | `Asia/Shanghai` |
 
-## 使用说明
+### 微信 Webhook
 
-1. 在 Web 界面中，使用文件浏览器选择源路径和目标路径
-2. 可选择是否启用 `--delete` 选项
-3. 可以设置定时同步：
-   - 每天定时
-   - 每周定时（指定星期几）
-   - 每月定时（指定日期）
-   - 间隔执行（自定义分钟或小时）
-4. 可以为任务添加备注说明
-5. 可以随时手动触发同步
-6. 支持编辑和删除已创建的任务
+在 Web 界面「设置」标签页填入企业微信群机器人 Webhook URL，保存后每次同步完成自动推送通知。
+
+## 目录结构
+
+```
+.
+├── app/
+│   ├── templates/
+│   │   └── index.html        # Web 界面
+│   ├── app.py                # Flask 主程序
+│   └── requirements.txt      # Python 依赖
+├── docker-compose.yml
+├── Dockerfile
+└── README.md
+```
 
 ## 技术栈
 
-- 后端：Python Flask
+- 后端：Python Flask + SQLite
 - 前端：原生 JavaScript + HTML + CSS
 - 容器化：Docker
-- 同步工具：Rsync
-
-## 目录结构
-.
-
-├── app/
-
-│ ├── templates/
-
-│ │ └── index.html # Web界面模板
-
-│ ├── app.py # Flask应用主程序
-
-│ └── requirements.txt # Python依赖
-
-├── docker-compose.yml # Docker Compose配置文件
-
-├── Dockerfile # Docker构建文件
-
-└── README.md # 项目说明文档
-
-## 安全说明
-
-- 建议将源路径以只读方式挂载，防止意外修改
-- 建议在内网环境使用，如需外网访问请做好安全防护
-- 默认使用非 root 用户运行容器
+- 同步引擎：Rsync + SSH
 
 ## 注意事项
 
-1. 建议将定时任务的间隔设置为不少于5分钟
-2. 首次运行时会自动创建必要的数据目录
-3. 任务配置数据保存在容器的 `/app/data` 目录下
-4. 修改时区和语言设置可以通过环境变量实现
-
-## 贡献指南
-
-欢迎提交 Issue 和 Pull Request 来帮助改进项目。
-
-## 许可证
-
-[MIT License](LICENSE)
+- 建议在内网环境使用，公网暴露请做好安全防护
+- 远程同步需要目标服务器安装 rsync 和 SSH
+- 数据持久化在 `/app/data` 目录（SQLite 数据库 + SSH 密钥）
+- 首次启动自动从旧 JSON 格式迁移到 SQLite
