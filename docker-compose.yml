@@ -1,5 +1,5 @@
 services:
-  rsync-web:
+  rsync-centry:
     build: .
     container_name: rsync-centry
     ports:
